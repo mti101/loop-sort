@@ -91,8 +91,32 @@ def patch_groovy(path):
     open(path, "w").write(s)
 
 
+APP_ID = "com.absolutejoy.loop.puzzle.sort.game"
+SCAFFOLD_ID = "com.terafort.loopsort"
+
+
+def retarget_package():
+    """Switch namespace/applicationId and MainActivity to APP_ID."""
+    kt_root = os.path.join(APP, "src", "main", "kotlin")
+    java_root = os.path.join(APP, "src", "main", "java")
+    for root in (kt_root, java_root):
+        old = os.path.join(root, *SCAFFOLD_ID.split("."))
+        if os.path.isdir(old):
+            shutil.rmtree(os.path.join(root, SCAFFOLD_ID.split(".")[0]))
+    new_dir = os.path.join(kt_root, *APP_ID.split("."))
+    os.makedirs(new_dir, exist_ok=True)
+    with open(os.path.join(new_dir, "MainActivity.kt"), "w") as f:
+        f.write("package %s\n\nimport io.flutter.embedding.android.FlutterActivity\n\nclass MainActivity : FlutterActivity()\n" % APP_ID)
+    for name in ("build.gradle.kts", "build.gradle"):
+        gp = os.path.join(APP, name)
+        if os.path.exists(gp):
+            t = open(gp).read().replace(SCAFFOLD_ID, APP_ID)
+            open(gp, "w").write(t)
+
+
 def main():
     overlay()
+    retarget_package()
     kts = os.path.join(APP, "build.gradle.kts")
     groovy = os.path.join(APP, "build.gradle")
     if os.path.exists(kts):
