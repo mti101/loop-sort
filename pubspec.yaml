@@ -9,11 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  google_mobile_ads: any
-  shared_preferences: any
-  audioplayers: any
-  in_app_purchase: any
-  url_launcher: any
+  google_mobile_ads: ^9.1.0
+  shared_preferences: ^2.5.5
+  audioplayers: ^6.8.1
+  in_app_purchase: ^3.3.1
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

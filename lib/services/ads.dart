@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
@@ -235,7 +234,6 @@ class _BannerSlotState extends State<BannerSlot> {
   BannerAd? _ad;
   bool _loaded = false;
   bool _loading = false;
-  int _width = 0;
 
   @override
   void initState() {
@@ -267,7 +265,6 @@ class _BannerSlotState extends State<BannerSlot> {
     if (!widget.ads.canRequestAds || widget.ads.store.adsRemoved) return;
     final w = MediaQuery.of(context).size.width.truncate();
     _loading = true;
-    _width = w;
     AdSize? size;
     try {
       size = await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(w);

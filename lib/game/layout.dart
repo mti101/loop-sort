@@ -65,7 +65,6 @@ class BoardLayout {
 
   Offset slotTileCenter(int j, int n) {
     final r = slotRect(j, n);
-    final t = slotTileSize(n);
     return Offset(r.left + r.width * 0.33, r.top + r.height * 0.40);
   }
 

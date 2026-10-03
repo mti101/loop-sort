@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -39,7 +38,7 @@ class Flight {
     required this.from,
     required this.toSlot,
     required this.toBay,
-    required this.delay,
+    required double delay,
     required this.dur,
     this.slotGen = 0,
     this.onArrive,
@@ -310,11 +309,6 @@ class GameController extends ChangeNotifier {
   Offset bayPoint(double bay) {
     final L = layout!;
     return L.loopPoint(phase + bay / math.max(1, dCap));
-  }
-
-  Offset _slotTarget(int j) {
-    final L = layout!;
-    return L.slotTileCenter(j, dSlots.length);
   }
 
   void update(double dt) {
