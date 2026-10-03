@@ -5,4 +5,5 @@ cd "$(dirname "$0")/.."
 flutter create --org com.terafort --project-name loopsort --platforms android --no-pub .
 rm -f test/widget_test.dart.orig
 python3 tools/ci/patch_android.py
+rm -f test/widget_test.dart
 flutter pub get

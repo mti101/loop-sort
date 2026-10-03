@@ -87,6 +87,10 @@ jobs:
           cp build/app/outputs/bundle/release/*.aab ci-out/ 2>/dev/null || true
           cp build/app/outputs/flutter-apk/app-release.apk ci-out/ 2>/dev/null || true
           echo "commit: $GITHUB_SHA" > ci-out/COMMIT.txt
+          mkdir -p ci-out/meta
+          cp pubspec.lock ci-out/meta/ 2>/dev/null || true
+          cp android/settings.gradle.kts android/app/build.gradle.kts android/gradle/wrapper/gradle-wrapper.properties ci-out/meta/ 2>/dev/null || true
+          flutter pub outdated > ci-out/meta/outdated.txt 2>&1 || true
 
       - uses: actions/upload-artifact@v4
         if: always()
