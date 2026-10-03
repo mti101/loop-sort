@@ -49,48 +49,60 @@ class BoardPainter extends CustomPainter {
       if (s.empty) {
         drawPlate(c, rr, AppColors.panelDark.withAlpha(120), edge: AppColors.panelEdge.withAlpha(70), edgeW: 2);
         drawText(c, '✓', r.center, 26, color: AppColors.green.withAlpha(150));
-        continue;
-      }
-      final appear = _easeOutBack(s.appear.clamp(0.0, 1.0));
-      final scale = (0.55 + 0.45 * appear) * (1 + 0.06 * s.pulse);
-      c.save();
-      c.translate(r.center.dx, r.center.dy);
-      c.scale(scale);
-      c.translate(-r.center.dx, -r.center.dy);
-      final col = AppColors.tile(s.color);
-      drawPlate(c, rr, const Color(0xFF123242), edge: col, edgeW: 3, depth: 4);
-      // tinted header glow
-      c.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTWH(r.left + 3, r.top + 3, r.width - 6, r.height * 0.55), const Radius.circular(15)),
-          _fill..color = col.withAlpha(34));
-      final ts = L.slotTileSize(n);
-      drawTile(c, L.slotTileCenter(j, n), ts, s.color, scale: 1 + 0.08 * s.pulse);
-      // remaining count
-      final numC = Offset(r.left + r.width * 0.72, r.top + r.height * 0.40);
-      drawText(c, '${s.need}', numC, math.min(r.height * 0.42, 40), color: Colors.white, shadow: const Color(0x66000000));
-      // pips
-      final total = math.max(1, s.total);
-      final pipS = math.min(11.0, (r.width - 28) / total - 3);
-      final rowW = total * (pipS + 3) - 3;
-      var px = r.center.dx - rowW / 2;
-      final py = r.bottom - 14;
-      final done = s.total - s.need;
-      for (var k = 0; k < total; k++) {
-        final pr = RRect.fromRectAndRadius(
-            Rect.fromLTWH(px, py - pipS / 2, pipS, pipS), Radius.circular(pipS * 0.3));
-        c.drawRRect(pr, _fill..color = k < done ? col : const Color(0xFF2B4A5C));
-        px += pipS + 3;
-      }
-      if (s.flash > 0) {
-        c.drawRRect(rr, _fill..color = Colors.white.withAlpha((s.flash * 200).round()));
+      } else {
+        final appear = _easeOutBack(s.appear.clamp(0.0, 1.0));
+        final scale = (0.55 + 0.45 * appear) * (1 + 0.06 * s.pulse);
         c.save();
         c.translate(r.center.dx, r.center.dy);
-        c.scale(r.height * 0.5 * (0.7 + 0.3 * s.flash));
-        c.drawPath(Symbols.check, _fill..color = AppColors.greenDark.withAlpha((s.flash * 255).round()));
+        c.scale(scale);
+        c.translate(-r.center.dx, -r.center.dy);
+        _card(c, L, j, n, r, rr, s.color, s.need, s.total, s.pulse);
         c.restore();
       }
-      c.restore();
+      final gc = s.ghostColor;
+      if (gc != null && s.ghostT > 0) {
+        final t = s.ghostT;
+        final sc = 1 + 0.14 * (1 - t);
+        c.save();
+        c.translate(r.center.dx, r.center.dy);
+        c.scale(sc);
+        c.translate(-r.center.dx, -r.center.dy);
+        c.saveLayer(r.inflate(12), Paint()..color = Color.fromRGBO(255, 255, 255, t.clamp(0.0, 1.0)));
+        final col = AppColors.tile(gc);
+        drawPlate(c, rr, const Color(0xFF123242), edge: col, edgeW: 3, depth: 4);
+        c.drawRRect(rr, _fill..color = Colors.white.withAlpha(120));
+        c.save();
+        c.translate(r.center.dx, r.center.dy);
+        c.scale(r.height * 0.5);
+        c.drawPath(Symbols.check, _fill..color = AppColors.greenDark);
+        c.restore();
+        c.restore();
+        c.restore();
+      }
+    }
+  }
+
+  void _card(Canvas c, BoardLayout L, int j, int n, Rect r, RRect rr, int color, int need, int total, double pulse) {
+    final col = AppColors.tile(color);
+    drawPlate(c, rr, const Color(0xFF123242), edge: col, edgeW: 3, depth: 4);
+    c.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(r.left + 3, r.top + 3, r.width - 6, r.height * 0.58), const Radius.circular(15)),
+        _fill..color = col.withAlpha(34));
+    final ts = L.slotTileSize(n);
+    drawTile(c, L.slotTileCenter(j, n), ts, color, scale: 1 + 0.08 * pulse);
+    final numC = Offset(r.left + r.width * 0.72, r.top + r.height * 0.42);
+    drawText(c, '$need', numC, math.min(r.height * 0.42, 40), color: Colors.white, shadow: const Color(0x66000000));
+    final tot = math.max(1, total);
+    final pipS = math.min(14.0, (r.width - 24) / tot - 3);
+    final rowW = tot * (pipS + 3) - 3;
+    var px = r.center.dx - rowW / 2;
+    final py = r.bottom - 17;
+    final done = total - need;
+    for (var k = 0; k < tot; k++) {
+      final pr = RRect.fromRectAndRadius(Rect.fromLTWH(px, py - pipS / 2, pipS, pipS), Radius.circular(pipS * 0.3));
+      c.drawRRect(pr, _fill..color = k < done ? col : const Color(0xFF2B4A5C));
+      px += pipS + 3;
     }
   }
 
@@ -100,7 +112,7 @@ class BoardPainter extends CustomPainter {
     var x = r.left + 52;
     var q = g.dQi;
     final total = g.lv.orders.length;
-    while (q < total && x < r.right - 48) {
+    while (q < total && x + 58 < r.right - 62) {
       final o = g.lv.orders[q];
       drawTile(c, Offset(x + 10, r.center.dy - 1), 20, o.color);
       drawText(c, '×${o.need}', Offset(x + 35, r.center.dy), 13, color: AppColors.textDim);

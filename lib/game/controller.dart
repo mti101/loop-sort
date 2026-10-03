@@ -19,9 +19,8 @@ class SlotView {
   double appear = 0; // pop-in 0..1
   double pulse = 0; // delivery pulse
   double flash = 0; // completion flash
-  bool completing = false;
-  Order? pendingNext;
-  double swapTimer = 0;
+  int? ghostColor; // colour of the order that just completed in this slot
+  double ghostT = 0; // 1 -> 0 completion animation
   bool empty = false;
 }
 
@@ -180,9 +179,9 @@ class GameController extends ChangeNotifier {
     if (status != GameStatus.playing) return;
     if (i < 0 || i >= state.stacks.length) return;
     if (state.stacks[i].isEmpty) return;
-    if (isStackLocked(i)) {
+    if (state.done < lv.locks[i]) {
       _shake(i);
-      final need = lv.locks[i] - dDone;
+      final need = lv.locks[i] - state.done;
       showToast('Locked! Complete $need more order${need == 1 ? '' : 's'}');
       onSound?.call('error');
       onHaptic?.call(1);
@@ -366,21 +365,10 @@ class GameController extends ChangeNotifier {
     }
 
     // slots
-    for (var j = 0; j < dSlots.length; j++) {
-      final s = dSlots[j];
-      if (s.appear < 1) s.appear = math.min(1, s.appear + dt * 3.2);
+    for (final s in dSlots) {
+      if (s.ghostT > 0) s.ghostT = math.max(0, s.ghostT - dt * 1.7);
+      if (s.appear < 1 && s.ghostT < 0.55) s.appear = math.min(1, s.appear + dt * 3.2);
       if (s.pulse > 0) s.pulse = math.max(0, s.pulse - dt * 5);
-      if (s.flash > 0) s.flash = math.max(0, s.flash - dt * 1.8);
-      if (s.completing) {
-        s.swapTimer -= dt;
-        if (s.swapTimer <= 0) {
-          final n = s.pendingNext;
-          final ns = n == null
-              ? (SlotView(0, 0, 0, _slotGen++)..empty = true..appear = 1)
-              : SlotView(n.color, n.need, n.total, _slotGen++);
-          dSlots[j] = ns;
-        }
-      }
     }
 
     // particles
@@ -525,15 +513,20 @@ class GameController extends ChangeNotifier {
         _evTimer += 0.12;
         final slot = e.slot;
         if (slot >= dSlots.length) return;
-        final sv = dSlots[slot];
-        sv.completing = true;
-        sv.pendingNext = e.next;
-        sv.swapTimer = 0.55;
-        sv.flash = 1;
+        final old = dSlots[slot];
+        final nx = e.next;
+        final nv = nx == null
+            ? (SlotView(0, 0, 0, _slotGen++)
+              ..empty = true
+              ..appear = 1)
+            : SlotView(nx.color, nx.need, nx.total, _slotGen++);
+        nv.ghostColor = old.color;
+        nv.ghostT = 1;
+        dSlots[slot] = nv;
         dDone++;
-        if (e.next != null) dQi++;
+        if (nx != null) dQi++;
         final at = layout!.slotRect(slot, dSlots.length).center;
-        _burst(at, AppColors.tile(sv.color), n: 18);
+        _burst(at, AppColors.tile(old.color), n: 18);
         onSound?.call('complete');
         onHaptic?.call(1);
         break;

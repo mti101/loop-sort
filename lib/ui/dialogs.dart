@@ -116,7 +116,10 @@ class DialogFrame extends StatelessWidget {
               padding: const EdgeInsets.only(top: 26),
               child: Panel(
                 padding: const EdgeInsets.fromLTRB(18, 38, 18, 20),
-                child: child,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.78),
+                  child: SingleChildScrollView(child: child),
+                ),
               ),
             ),
             Positioned(

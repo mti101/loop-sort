@@ -115,7 +115,7 @@ class _GameButtonState extends State<GameButton> {
           ),
           child: Container(
             margin: EdgeInsets.only(bottom: depth),
-            padding: const EdgeInsets.symmetric(horizontal: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(widget.height * 0.34),
               gradient: LinearGradient(
@@ -135,17 +135,21 @@ class _GameButtonState extends State<GameButton> {
                   const SizedBox(width: 8),
                 ],
                 Flexible(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      OutlinedText(widget.label,
-                          size: widget.fontSize,
-                          outline: AppColors.shade(dark, -0.12),
-                          outlineWidth: widget.fontSize * 0.2,
-                          shadowDepth: 2),
-                      if (widget.sub != null)
-                        Text(widget.sub!, style: gameText(widget.fontSize * 0.5, color: Colors.white70)),
-                    ],
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        OutlinedText(widget.label,
+                            size: widget.fontSize,
+                            outline: AppColors.shade(dark, -0.12),
+                            outlineWidth: widget.fontSize * 0.2,
+                            shadowDepth: 2),
+                        if (widget.sub != null)
+                          Text(widget.sub!, style: gameText(widget.fontSize * 0.5, color: Colors.white70)),
+                      ],
+                    ),
                   ),
                 ),
               ],

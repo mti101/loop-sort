@@ -29,7 +29,7 @@ class BoardLayout {
   void _compute() {
     final w = size.width, h = size.height;
     const pad = 12.0;
-    final ordersH = (h * 0.175).clamp(86.0, 120.0).toDouble();
+    final ordersH = (h * 0.15).clamp(80.0, 104.0).toDouble();
     ordersRect = Rect.fromLTWH(pad, 4, w - pad * 2, ordersH);
     queueRect = Rect.fromLTWH(pad, ordersRect.bottom + 4, w - pad * 2, 24);
     final loopH = (h * 0.235).clamp(116.0, 188.0).toDouble();
