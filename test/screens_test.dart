@@ -30,6 +30,13 @@ void main() {
     final font = FontLoader('Lilita')
       ..addFont(Future.value(ByteData.view(File('assets/fonts/LilitaOne-Regular.ttf').readAsBytesSync().buffer)));
     await font.load();
+    final root = Platform.environment['FLUTTER_ROOT'] ?? '';
+    final mi = File('$root/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+    if (mi.existsSync()) {
+      final icons = FontLoader('MaterialIcons')
+        ..addFont(Future.value(ByteData.view(mi.readAsBytesSync().buffer)));
+      await icons.load();
+    }
   });
 
   Future<void> setup(WidgetTester tester, {Map<String, Object> prefs = const {}}) async {
