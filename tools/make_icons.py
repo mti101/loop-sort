@@ -37,12 +37,19 @@ def symbol(d, kind, cx, cy, s, fill):
         r = s * 0.3
         d.ellipse([cx - r, cy - r * 0.2, cx + r, cy + r * 1.8], fill=fill)
         d.polygon([(cx, cy - r * 1.6), (cx - r * 0.95, cy + r * 0.45), (cx + r * 0.95, cy + r * 0.45)], fill=fill)
-    elif kind == 2:  # leaf
-        pts = []
-        for i in range(0, 361, 10):
-            a = math.radians(i)
-            pts.append((cx + s * 0.34 * math.cos(a) * (1 - 0.0), cy + s * 0.22 * math.sin(a) * 1.4))
-        d.polygon(pts, fill=fill)
+    elif kind == 2:  # leaf (pointed lens rotated)
+        pts_top, pts_bot = [], []
+        A, B = s * 0.38, s * 0.2
+        n = 24
+        for i in range(n + 1):
+            x = -A + 2 * A * i / n
+            yy = B * (1 - (x / A) ** 2) ** 0.75
+            pts_top.append((x, -yy))
+            pts_bot.append((x, yy))
+        pts = pts_top + pts_bot[::-1]
+        ang = math.radians(-40)
+        rot = [(cx + px * math.cos(ang) - py * math.sin(ang), cy + px * math.sin(ang) + py * math.cos(ang)) for px, py in pts]
+        d.polygon(rot, fill=fill)
     else:  # star
         pts = []
         for i in range(10):
@@ -70,44 +77,48 @@ def tile(img, cx, cy, s, ci, kind, rot=0):
 
 
 def draw_mark(size, with_bg=True, scale=1.0):
-    """The Loop Sort mark: a stadium conveyor with tiles."""
+    """The Loop Sort mark: a stadium conveyor with tiles riding it."""
     S = size * 2  # supersample
     if with_bg:
         bg = vgrad((S, S), (34, 98, 124), (9, 30, 42)).convert("RGBA")
     else:
         bg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(bg)
     cx = cy = S / 2
-    w = S * 0.60 * scale
-    h = S * 0.36 * scale
-    belt = S * 0.115 * scale
-    # belt (stadium) rails
-    def stadium(inflate, color):
-        d.rounded_rectangle([cx - w / 2 - inflate, cy - h / 2 - inflate, cx + w / 2 + inflate, cy + h / 2 + inflate],
-                            int(h / 2 + inflate), outline=color, width=int(belt))
-    stadium(belt * 0.0 + 8 * scale, (7, 24, 32))
-    stadium(0, (47, 112, 144))
-    inner = belt * 0.62
-    d.rounded_rectangle([cx - w / 2 + belt * 0.0, cy - h / 2, cx + w / 2, cy + h / 2], int(h / 2),
-                        outline=(23, 63, 82), width=int(inner))
-    # amber arrow chevrons on belt
-    for k in range(7):
-        a = k / 7 * 2 * math.pi
-        # sample point on stadium centreline
-        px = cx + (w / 2 - h / 2) * (1 if math.cos(a) > 0 else -1) * 0 + 0
-    # tiles around
+    w = S * 0.70 * scale
+    h = S * 0.46 * scale
+    belt = S * 0.19 * scale
+    ring = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    rd = ImageDraw.Draw(ring)
+    def rr(grow, color):
+        rd.rounded_rectangle([cx - w / 2 - grow, cy - h / 2 - grow, cx + w / 2 + grow, cy + h / 2 + grow],
+                             int(h / 2 + grow), fill=color)
+    sh = S * 0.016
+    rr(belt / 2 + 12 * scale, (4, 16, 22, 255))
+    rr(belt / 2 + 3 * scale, (110, 190, 222, 255))
+    rr(belt / 2 - 7 * scale, (38, 96, 124, 255))
+    rr(-belt / 2 + 7 * scale, (110, 190, 222, 255))
+    rr(-belt / 2 + 13 * scale, (0, 0, 0, 0))
+    shadow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    shadow.alpha_composite(ring, (0, int(sh)))
+    sd = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    sd.putalpha(shadow.getchannel("A").point(lambda v: int(v * 0.35)))
+    bg.alpha_composite(sd)
+    bg.alpha_composite(ring)
+    d = ImageDraw.Draw(bg)
+    def chev(x, y, dirn):
+        k = S * 0.028 * scale
+        d.line([(x - dirn * k, y - k), (x + dirn * k * 0.5, y), (x - dirn * k, y + k)], fill=(255, 180, 46), width=int(S * 0.014 * scale), joint="curve")
+    for fx in (-0.34, 0.06, 0.40):
+        chev(cx + w * fx, cy - h / 2, 1)
+        chev(cx + w * fx * -1, cy + h / 2, -1)
+    chev(cx + w / 2, cy - h * 0.25, 1)
+    chev(cx - w / 2, cy + h * 0.25, -1)
     sz = S * 0.205 * scale
-    tile(bg, cx - w * 0.29, cy - h / 2, sz, 0, 0, 8)
-    tile(bg, cx + w * 0.29, cy - h / 2, sz, 1, 1, -6)
-    tile(bg, cx + w / 2 - 2, cy + 0, sz * 0.95, 3, 3, 10)
-    tile(bg, cx, cy + h / 2, sz, 2, 2, -4)
-    tile(bg, cx - w / 2 + 2, cy + 0, sz * 0.95, 4, 3, -8)
-    # centre arrow (loop sign)
-    d2 = ImageDraw.Draw(bg)
-    r = S * 0.07 * scale
-    d2.arc([cx - r, cy - r, cx + r, cy + r], 40, 320, fill=(255, 180, 46), width=int(S * 0.022 * scale))
-    ax, ay = cx + r * math.cos(math.radians(40)), cy + r * math.sin(math.radians(40))
-    d2.polygon([(ax - S * 0.002, ay - S * 0.03 * scale), (ax + S * 0.035 * scale, ay + S * 0.006 * scale), (ax - S * 0.03 * scale, ay + S * 0.016 * scale)], fill=(255, 180, 46))
+    tile(bg, cx - w * 0.22, cy - h / 2, sz, 0, 0, 7)
+    tile(bg, cx + w * 0.30, cy - h / 2, sz, 1, 1, -6)
+    tile(bg, cx + w / 2, cy, sz, 3, 3, 8)
+    tile(bg, cx + w * 0.02, cy + h / 2, sz, 2, 2, -5)
+    tile(bg, cx - w / 2, cy, sz, 4, 3, -9)
     return bg.resize((size, size), Image.LANCZOS)
 
 
