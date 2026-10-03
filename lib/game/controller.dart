@@ -87,6 +87,7 @@ class GameController extends ChangeNotifier {
   late GameState state;
   final List<GameState> history = [];
   int moves = 0;
+  final List<int> moveLog = [];
   GameStatus status = GameStatus.playing;
   bool deadEnd = false;
   bool revived = false;
@@ -199,6 +200,7 @@ class GameController extends ChangeNotifier {
       return;
     }
     history.add(state);
+    moveLog.add(i);
     moves++;
     state = ns;
     deadEnd = false;
@@ -218,6 +220,7 @@ class GameController extends ChangeNotifier {
     if (!canUndo) return false;
     state = history.removeLast();
     if (moves > 0) moves--;
+    if (moveLog.isNotEmpty) moveLog.removeLast();
     deadEnd = false;
     _resetView();
     onSound?.call('button');
@@ -246,6 +249,24 @@ class GameController extends ChangeNotifier {
     _queue.addAll(ev);
     onSound?.call('star');
     return true;
+  }
+
+  /// Tutorial helper: point at the next move of the stored solution while the
+  /// player is still on it.
+  void autoHint() {
+    final sol = lv.solution;
+    if (moveLog.length >= sol.length) {
+      hintStack = -1;
+      return;
+    }
+    for (var k = 0; k < moveLog.length; k++) {
+      if (moveLog[k] != sol[k]) {
+        hintStack = -1;
+        return;
+      }
+    }
+    hintStack = sol[moveLog.length];
+    hintTimer = 3600;
   }
 
   Future<HintResult> hint() async {
