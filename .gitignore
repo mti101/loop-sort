@@ -1,0 +1,29 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# Generated platform scaffolding (recreated by tools/setup_android.sh)
+/android/
+/ios/
+/web/
+/linux/
+/macos/
+/windows/
+
+# Secrets - NEVER commit
+*.jks
+*.keystore
+key.properties
+local.properties
+.env
+secrets/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.iml

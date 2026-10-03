@@ -1,0 +1,31 @@
+name: loopsort
+description: Loop Sort - a conveyor-belt sorting puzzle game.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_mobile_ads: ^5.3.1
+  shared_preferences: ^2.3.3
+  audioplayers: ^6.1.0
+  in_app_purchase: ^3.2.0
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/levels/
+    - assets/audio/
+  fonts:
+    - family: Lilita
+      fonts:
+        - asset: assets/fonts/LilitaOne-Regular.ttf
