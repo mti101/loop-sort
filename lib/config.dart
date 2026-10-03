@@ -6,14 +6,14 @@
 /// ADMOB_APP_ID secret).
 class AppConfig {
   static const String appName = 'Loop Sort';
-  static const String packageId = 'com.absolutejoy.loop.puzzle.sort.game';
+  static const String packageId = 'com.ajoy.loop.puzzle.sort.game';
   static const String companyName = 'Terafort';
   static const String supportEmail = 'support@terafort.com';
 
   /// Hosted privacy policy (GitHub Pages from /docs once enabled).
   static const String privacyUrl = 'https://mti101.github.io/loop-sort/privacy.html';
   static const String storeUrl =
-      'https://play.google.com/store/apps/details?id=com.absolutejoy.loop.puzzle.sort.game';
+      'https://play.google.com/store/apps/details?id=com.ajoy.loop.puzzle.sort.game';
 
   /// Non-consumable in-app product (create the same ID in Play Console).
   static const String removeAdsProductId = 'remove_ads';

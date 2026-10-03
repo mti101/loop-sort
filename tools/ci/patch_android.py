@@ -91,7 +91,7 @@ def patch_groovy(path):
     open(path, "w").write(s)
 
 
-APP_ID = "com.absolutejoy.loop.puzzle.sort.game"
+APP_ID = "com.ajoy.loop.puzzle.sort.game"
 SCAFFOLD_ID = "com.terafort.loopsort"
 
 
