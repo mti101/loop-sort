@@ -5,8 +5,9 @@ import 'dart:convert';
 
 class Order {
   final int color;
-  final int need;
-  const Order(this.color, this.need);
+  final int need; // tiles still required
+  final int total; // tiles originally required (for progress display)
+  const Order(this.color, this.need, [int? total]) : total = total ?? need;
 }
 
 class LevelData {
@@ -178,7 +179,7 @@ bool isLocked(LevelData lv, GameState st, int i) => st.done < lv.locks[i];
         final take = loop[c] < need ? loop[c] : need;
         loop[c] -= take;
         need -= take;
-        active[j] = Order(c, need);
+        active[j] = Order(c, need, a.total);
         changed = true;
         if (ev != null) {
           for (var t = 0; t < take; t++) {
@@ -219,7 +220,7 @@ GameState? applyMove(LevelData lv, GameState st, int i, [List<Ev>? ev]) {
       final a = active[j];
       if (a != null && a.color == c && a.need > 0) {
         final need = a.need - 1;
-        active[j] = Order(c, need);
+        active[j] = Order(c, need, a.total);
         ev?.add(Ev.send(i, c, j));
         delivered = true;
         if (need == 0) {
