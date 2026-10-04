@@ -220,9 +220,6 @@ void drawTile(Canvas canvas, Offset c, double size, int color,
   drawBrick(canvas, c, size, size, color, hidden: hidden, scale: scale, alpha: alpha, dim: dim, glow: glow);
 }
 
-extension _Let<T> on T {
-  R let<R>(R Function(T) f) => f(this);
-}
 
 /// Stacked rounded rectangle "button-like" panel used by the board.
 void drawPlate(Canvas canvas, RRect rr, Color fill, {Color? edge, double edgeW = 2, double depth = 0}) {

@@ -162,7 +162,7 @@ class BoardPainter extends CustomPainter {
         rr,
         _p
           ..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter,
-              const [Color(0xFF1A2260), Color(0xFF252F7E), Color(0xFF2E3A92)]));
+              const [Color(0xFF1A2260), Color(0xFF252F7E), Color(0xFF2E3A92)], const [0.0, 0.5, 1.0]));
     _p.shader = null;
     // inner top shade
     canvas.drawRRect(

@@ -301,10 +301,10 @@ _UL _ring(String shape, int S, int C) {
     slots.add(_US(i, Offset(x, tube), const Offset(0, -1), _vAlong, 1.0, C, _pad));
   }
   if (shape == 'bump' && S >= 3) {
-    final Rm = math.max(0.9, (S - 1) / 2 * _gap - 0.2);
+    final rm = math.max(0.9, (S - 1) / 2 * _gap - 0.2);
     final poly = [
-      Offset(R, -0.62), Offset(Rm + 0.4, -0.62), Offset(Rm + 0.4, top - 0.3), Offset(-Rm - 0.4, top - 0.3),
-      Offset(-Rm - 0.4, -0.62), Offset(-R, -0.62), Offset(-R, bot), Offset(R, bot),
+      Offset(R, -0.62), Offset(rm + 0.4, -0.62), Offset(rm + 0.4, top - 0.3), Offset(-rm - 0.4, top - 0.3),
+      Offset(-rm - 0.4, -0.62), Offset(-R, -0.62), Offset(-R, bot), Offset(R, bot),
     ];
     return _UL(BeltPath(roundedPolygon(poly, 0.7), true), slots);
   }

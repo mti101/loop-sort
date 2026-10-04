@@ -50,8 +50,6 @@ class _PicPainter extends CustomPainter {
 
 final Paint _f = Paint()..isAntiAlias = true;
 
-Color _mix(Color a, Color b, double t) => Color.lerp(a, b, t)!;
-
 void paintFactory(Canvas canvas, Size s, int seed) {
   final w = s.width, h = s.height;
   final rnd = math.Random(seed * 977 + 5);
