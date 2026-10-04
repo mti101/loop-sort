@@ -147,6 +147,7 @@ jobs:
             adb exec-out screencap -p > smoke/shot_27s.png
             adb shell pidof com.ajoy.loop.puzzle.sort.game > smoke/pid.txt || echo "NO PROCESS" > smoke/pid.txt
             adb logcat -d > smoke/logcat.txt
+            if grep -q 'NO PROCESS' smoke/pid.txt; then echo CRASHED > smoke/RESULT.txt; else echo OK > smoke/RESULT.txt; fi
       - name: Publish smoke output
         if: always()
         env:

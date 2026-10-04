@@ -52,7 +52,7 @@ def patch_kts(path):
     s = s.replace("    buildTypes {", signing + "    buildTypes {", 1)
     s, n = re.subn(
         r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
-        'signingConfig = if (keystorePropertiesFile.exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")',
+        'signingConfig = if (keystorePropertiesFile.exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")\n            // R8 stripped Room/WorkManager classes (AdMob dependency) and crashed at launch.\n            isMinifyEnabled = false\n            isShrinkResources = false',
         s,
     )
     assert n >= 1, "release signingConfig line not found"
