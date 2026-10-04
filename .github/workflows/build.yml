@@ -113,3 +113,47 @@ jobs:
           git add -A
           git commit -qm "CI output for $GITHUB_SHA"
           git push -f "https://x-access-token:${GH_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-output
+
+  smoke:
+    needs: build
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: loopsort-release
+          path: art
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Launch on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            mkdir -p smoke
+            adb install -r art/app-release.apk 2>&1 | tee smoke/install.log
+            adb logcat -c
+            adb shell monkey -p com.ajoy.loop.puzzle.sort.game -c android.intent.category.LAUNCHER 1 2>&1 | tee smoke/launch.log
+            sleep 12
+            adb exec-out screencap -p > smoke/shot_12s.png
+            sleep 15
+            adb exec-out screencap -p > smoke/shot_27s.png
+            adb shell pidof com.ajoy.loop.puzzle.sort.game > smoke/pid.txt || echo "NO PROCESS" > smoke/pid.txt
+            adb logcat -d > smoke/logcat.txt
+      - name: Publish smoke output
+        if: always()
+        env:
+          GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p smoke && cd smoke
+          git init -q -b ci-smoke
+          git config user.name loopsort-ci && git config user.email ci@users.noreply.github.com
+          git add -A && git commit -qm "smoke" 
+          git push -f "https://x-access-token:${GH_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-smoke
