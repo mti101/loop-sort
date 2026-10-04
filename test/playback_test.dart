@@ -75,6 +75,29 @@ void main() {
     }
   });
 
+  test('debug ribbon L4', () {
+    final lv = levels[3];
+    final g = GameController(lv);
+    g.setSize(_size);
+    final geo = g.geo!;
+    final i = lv.solution.first;
+    // ignore: avoid_print
+    print('DBG slot $i base=${geo.slots[i].base} dir=${geo.slots[i].dir} gate=${geo.slots[i].gate} arc=${geo.slots[i].gateArc} tile=${geo.tile} tc0=${geo.slots[i].tileCenter(0, 4)} len=${geo.belt.length}');
+    g.tapSlot(i);
+    for (var k = 0; k < 90; k++) {
+      g.update(1 / 60);
+      if (k % 10 == 0) {
+        for (final b in g.belt) {
+          // ignore: avoid_print
+          print('DBG f$k tile=${b.tile.id} h=${b.h.toStringAsFixed(1)} a0=${b.a0} from=${b.from} col=${b.colLen.toStringAsFixed(1)} tgt=${b.target} rem=${b.rem.toStringAsFixed(1)} past=${b.past.toStringAsFixed(1)}');
+        }
+      }
+    }
+    // ignore: avoid_print
+    print('DBG tileLen=${g.tileLen} n=${g.slatN} sp=${g.slatSp}');
+    g.dispose();
+  });
+
   test('undo restores state and view', () {
     for (final lv in levels.where((l) => l.id % 9 == 4)) {
       final g = GameController(lv);
