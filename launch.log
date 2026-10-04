@@ -1,0 +1,15 @@
+  bash arg: -p
+  bash arg: com.ajoy.loop.puzzle.sort.game
+  bash arg: -c
+  bash arg: android.intent.category.LAUNCHER
+  bash arg: 1
+args: [-p, com.ajoy.loop.puzzle.sort.game, -c, android.intent.category.LAUNCHER, 1]
+ arg: "-p"
+ arg: "com.ajoy.loop.puzzle.sort.game"
+ arg: "-c"
+ arg: "android.intent.category.LAUNCHER"
+ arg: "1"
+data="com.ajoy.loop.puzzle.sort.game"
+data="android.intent.category.LAUNCHER"
+Events injected: 1
+## Network stats: elapsed time=439ms (0ms mobile, 0ms wifi, 439ms not connected)
