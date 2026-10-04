@@ -52,6 +52,11 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
+  Future<void> images(WidgetTester tester) async {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+
   Future<void> run(WidgetTester tester, int ms) async {
     for (var t = 0; t < ms; t += 16) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -62,6 +67,7 @@ void main() {
     await setup(tester, prefs: {'dailyLastDay': Store.dayIndex(DateTime.now())});
     await tester.pumpWidget(app(const HomeScreen()));
     await tester.pump(const Duration(milliseconds: 600));
+    await images(tester);
     await shot(tester, '01_home');
     await tester.pumpWidget(const SizedBox());
   });
@@ -82,6 +88,7 @@ void main() {
       });
       await tester.pumpWidget(app(GameScreen(level: n)));
       await tester.pump(const Duration(milliseconds: 700));
+      await images(tester);
       await shot(tester, '10_game_L${n}_start');
       final lv = Ctx.I.level(n);
       final boardFinder = find.byWidgetPredicate((w) => w is CustomPaint && w.painter is BoardPainter);
@@ -125,6 +132,7 @@ void main() {
         ),
       )));
       await tester.pump(const Duration(milliseconds: 1600));
+      await images(tester);
       await shot(tester, e.key);
     }
     await tester.pumpWidget(const SizedBox());

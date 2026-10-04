@@ -81,6 +81,29 @@ class BeltPath {
     return bestU;
   }
 
+  /// Arc position where the ray from [o] along [d] first meets the belt;
+  /// falls back to the nearest point when the ray misses.
+  double rayHit(Offset o, Offset d) {
+    var bestT = double.infinity;
+    var bestU = -1.0;
+    final segs = closed ? pts.length : pts.length - 1;
+    for (var i = 0; i < segs; i++) {
+      final a = pts[i];
+      final b = pts[(i + 1) % pts.length];
+      final e = b - a;
+      final den = d.dx * e.dy - d.dy * e.dx;
+      if (den.abs() < 1e-9) continue;
+      final w = a - o;
+      final t = (w.dx * e.dy - w.dy * e.dx) / den; // along the ray
+      final s = (w.dx * d.dy - w.dy * d.dx) / den; // along the segment
+      if (t > 0.5 && s >= 0 && s <= 1 && t < bestT) {
+        bestT = t;
+        bestU = cum[i] + (cum[i + 1] - cum[i]) * s;
+      }
+    }
+    return bestU >= 0 ? bestU : project(o);
+  }
+
   Path toPath() {
     final p = Path()..moveTo(pts.first.dx, pts.first.dy);
     for (var i = 1; i < pts.length; i++) {
@@ -198,7 +221,7 @@ class BoardGeometry {
     final slots = <SlotGeo>[];
     for (final s in u.slots) {
       final base = tf(s.base);
-      final arc = belt.project(tf(s.entry));
+      final arc = belt.rayHit(tf(s.entry), s.dir);
       slots.add(SlotGeo(
         index: s.index,
         base: base,
