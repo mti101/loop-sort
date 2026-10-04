@@ -696,77 +696,97 @@ class _WinDialogState extends State<WinDialog> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final ctx = Ctx.I;
-    return DialogFrame(
-      title: widget.last ? 'ALL DONE!' : 'LEVEL ${widget.level}',
-      width: 330,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedBuilder(
-            animation: _c,
-            builder: (context, _) {
-              final shown = (_c.value * 4.2).floor().clamp(0, widget.stars);
-              return StarsRow(count: shown, size: 62);
-            },
-          ),
-          const SizedBox(height: 6),
-          OutlinedText('SOLVED!', size: 34, color: AppColors.green, outline: const Color(0xFF0B3A22)),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-            decoration: BoxDecoration(color: AppColors.panelDark, borderRadius: BorderRadius.circular(18)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const CoinIcon(size: 34),
-              const SizedBox(width: 10),
-              Text('+${_doubled ? widget.coins * 2 : widget.coins}', style: gameText(32, color: AppColors.amber)),
-            ]),
-          ),
-          const SizedBox(height: 16),
-          if (!_doubled)
-            GameButton(
-              label: 'x2 COINS',
-              icon: Icons.play_circle_fill_rounded,
-              color: AppColors.amber,
-              height: 52,
-              fontSize: 22,
-              onTap: () async {
-                if (await watchAd(context)) {
-                  ctx.store.addCoins(widget.coins);
-                  ctx.sfx.play('coin');
-                  setState(() => _doubled = true);
-                }
+    return Material(
+      color: Colors.transparent,
+      child: SizedBox(
+        width: 340,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            OutlinedText(widget.last ? 'ALL DONE!' : 'WELL DONE!',
+                size: 54, color: const Color(0xFFFFC21A), outline: const Color(0xFF6A2A00), shadowDepth: 6),
+            const SizedBox(height: 4),
+            AnimatedBuilder(
+              animation: _c,
+              builder: (context, _) {
+                final shown = (_c.value * 4.2).floor().clamp(0, widget.stars);
+                return StarsRow(count: shown, size: 58);
               },
             ),
-          if (!_doubled) const SizedBox(height: 10),
-          GameButton(
-            label: widget.last ? 'HOME' : 'NEXT',
-            height: 60,
-            fontSize: 28,
-            onTap: () => Navigator.of(context).pop(widget.last ? 'home' : 'next'),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: GameButton(
-                    label: 'REPLAY',
-                    color: AppColors.blue,
-                    height: 42,
-                    fontSize: 16,
-                    onTap: () => Navigator.of(context).pop('replay')),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 170,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Positioned(bottom: 0, child: Image.asset('assets/art/pip.png', height: 160, filterQuality: FilterQuality.medium)),
+                  Positioned(
+                    left: 24,
+                    bottom: 6,
+                    child: Image.asset('assets/art/dog.png', height: 70, filterQuality: FilterQuality.medium),
+                  ),
+                  for (var i = 0; i < 5; i++)
+                    Positioned(
+                      right: 30.0 + (i % 2) * 34,
+                      bottom: 8.0 + i * 8,
+                      child: const CoinIcon(size: 34),
+                    ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: GameButton(
-                    label: 'HOME',
-                    color: AppColors.blue,
-                    height: 42,
-                    fontSize: 16,
-                    onTap: () => Navigator.of(context).pop('home')),
+            ),
+            const SizedBox(height: 6),
+            if (!_doubled)
+              GameButton(
+                label: 'x2 COINS',
+                icon: Icons.play_circle_fill_rounded,
+                color: AppColors.amber,
+                height: 50,
+                fontSize: 22,
+                width: 250,
+                onTap: () async {
+                  if (await watchAd(context)) {
+                    ctx.store.addCoins(widget.coins);
+                    ctx.sfx.play('coin');
+                    setState(() => _doubled = true);
+                  }
+                },
               ),
-            ],
-          ),
-        ],
+            if (!_doubled) const SizedBox(height: 10),
+            GameButton(
+              label: widget.last ? 'HOME' : 'COMPLETE',
+              sub: '+${_doubled ? widget.coins * 2 : widget.coins} coins',
+              width: 250,
+              height: 66,
+              fontSize: 28,
+              onTap: () => Navigator.of(context).pop(widget.last ? 'home' : 'next'),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 120,
+                  child: GameButton(
+                      label: 'REPLAY',
+                      color: AppColors.blue,
+                      height: 40,
+                      fontSize: 16,
+                      onTap: () => Navigator.of(context).pop('replay')),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 120,
+                  child: GameButton(
+                      label: 'HOME',
+                      color: AppColors.blue,
+                      height: 40,
+                      fontSize: 16,
+                      onTap: () => Navigator.of(context).pop('home')),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
