@@ -84,6 +84,14 @@ void main() {
       for (var k = 0; k < 2 && k < lv.solution.length; k++) {
         final c = geo.slots[lv.solution[k]].center;
         await tester.tapAt(box.topLeft + c);
+        if (k == 0 && (n == 2 || n == 3 || n == 4 || n == 12)) {
+          await tester.pump(const Duration(milliseconds: 160));
+          await shot(tester, '12_game_L${n}_a');
+          await tester.pump(const Duration(milliseconds: 240));
+          await shot(tester, '12_game_L${n}_b');
+          await tester.pump(const Duration(milliseconds: 300));
+          await shot(tester, '12_game_L${n}_c');
+        }
         await tester.pump(const Duration(milliseconds: 650));
       }
       await shot(tester, '11_game_L${n}_moves');

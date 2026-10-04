@@ -10,11 +10,6 @@ import 'painting.dart';
 
 final Paint _p = Paint()..isAntiAlias = true;
 
-double _smooth(double a, double b, double x) {
-  final t = ((x - a) / (b - a)).clamp(0.0, 1.0);
-  return t * t * (3 - 2 * t);
-}
-
 class BoardPainter extends CustomPainter {
   BoardPainter(this.g) : super(repaint: g);
   final GameController g;
@@ -259,74 +254,78 @@ class BoardPainter extends CustomPainter {
   }
 
   // ----------------------------------------------------------- belt tiles
-  static const _slats = 6;
-
-  void _slatsAt(Canvas canvas, BoardGeometry geo, double u, int color, double alpha, {int count = _slats}) {
-    if (alpha <= 0.01) return;
-    final base = AppColors.tile(color);
-    final bw = geo.beltWidth;
-    final sp = geo.tile * 0.085;
-    final th = sp * 0.92;
-    final a = (alpha * 255).round();
-    for (var j = 0; j < count; j++) {
-      final uj = u - j * sp;
-      final p = geo.belt.pointAt(uj);
-      final ang = geo.belt.angleAt(uj);
-      canvas.save();
-      canvas.translate(p.dx, p.dy);
-      canvas.rotate(ang);
-      final rc = Rect.fromCenter(center: Offset.zero, width: th, height: bw * 1.02);
-      final rr = RRect.fromRectAndRadius(rc, Radius.circular(th * 0.4));
-      canvas.drawRRect(rr.shift(const Offset(0.6, 1.4)), _p..color = Colors.black.withAlpha((a * 0.3).round()));
-      canvas.drawRRect(rr, _p..color = (j.isEven ? base : AppColors.shade(base, -0.1)).withAlpha(a));
-      canvas.drawRect(Rect.fromLTWH(rc.left, rc.top + 1, th * 0.45, rc.height - 2),
-          _p..color = AppColors.shade(base, 0.22).withAlpha((a * 0.9).round()));
-      canvas.restore();
-    }
+  /// One thin slat of a ribbon, centred at [c], its thickness running along [ang].
+  void _slat(Canvas canvas, Offset c, double ang, double th, double w, Color base, int j) {
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate(ang);
+    final rc = Rect.fromCenter(center: Offset.zero, width: th, height: w);
+    final rr = RRect.fromRectAndRadius(rc, Radius.circular(th * 0.38));
+    canvas.drawRRect(rr.shift(const Offset(0.4, 1.6)), _p..color = const Color(0x40000020));
+    canvas.drawRRect(rr, _p..color = j.isEven ? base : AppColors.shade(base, -0.07));
+    // sheen across the ribbon + bright leading edge
+    canvas.drawRect(Rect.fromLTRB(rc.left, rc.top + 1, rc.right, rc.top + w * 0.3),
+        _p..color = AppColors.shade(base, 0.3).withValues(alpha: 0.75));
+    canvas.drawRect(Rect.fromLTRB(rc.left, rc.bottom - w * 0.2, rc.right, rc.bottom - 1),
+        _p..color = AppColors.shade(base, -0.28).withValues(alpha: 0.7));
+    canvas.restore();
   }
 
   void _beltTiles(Canvas canvas, BoardGeometry geo) {
+    final n = g.slatN, sp = g.slatSp, th = sp * 0.96;
+    // landing bricks first so the incoming stream pours onto them
     for (final b in g.belt) {
-      final color = b.tile.color;
-      switch (b.phase) {
-        case BPhase.lift:
-          if (b.delay > 0) {
-            // still sitting in its slot, drawn as part of the lift origin
-            _liftBrick(canvas, geo, b, 0);
-            break;
-          }
-          final t = Curves.easeOut.transform(b.t.clamp(0.0, 1.0));
-          _liftBrick(canvas, geo, b, t);
-          final gate = geo.slots[b.src].gateArc;
-          _slatsAt(canvas, geo, gate, color, _smooth(0.55, 1.0, b.t));
-          break;
-        case BPhase.ride:
-          _slatsAt(canvas, geo, b.u, color, 1);
-          break;
-        case BPhase.drop:
-          final t = b.t.clamp(0.0, 1.0);
-          final tg = geo.slots[b.target!];
-          _slatsAt(canvas, geo, tg.gateArc, color, 1 - _smooth(0.0, 0.45, t));
-          final e = Curves.easeIn.transform(t);
-          final pos = Offset.lerp(b.dropFrom, b.dropTo, e)!;
-          final vertical = tg.dir.dx.abs() < 0.5;
-          final w = (vertical ? tg.cross : tg.along) * 0.96;
-          final h = (vertical ? tg.along : tg.cross) * 0.96;
-          final grow = _smooth(0.0, 0.7, t);
-          drawBrick(canvas, pos, w, h, color, scale: 0.55 + 0.45 * grow, alpha: _smooth(0.05, 0.5, t));
-          break;
+      if (b.target != null && b.past > 0 && b.colT > 0) {
+        final tg = geo.slots[b.target!];
+        final f = ((b.past - b.colT) / math.max(1.0, (n - 1) * sp)).clamp(0.0, 1.0);
+        if (f <= 0) continue;
+        final vertical = tg.dir.dx.abs() < 0.5;
+        final w = (vertical ? tg.cross : tg.along) * 0.96;
+        final h = (vertical ? tg.along : tg.cross) * 0.96;
+        drawBrick(canvas, b.dropTo, w, h, b.tile.color, scale: 0.72 + 0.28 * f, alpha: f);
       }
     }
-  }
-
-  void _liftBrick(Canvas canvas, BoardGeometry geo, BeltV b, double t) {
-    final sg = geo.slots[b.src];
-    final vertical = sg.dir.dx.abs() < 0.5;
-    final w = (vertical ? sg.cross : sg.along) * 0.96;
-    final h = (vertical ? sg.along : sg.cross) * 0.96;
-    final pos = Offset.lerp(b.from, sg.gate, t)!;
-    final alpha = 1 - _smooth(0.45, 0.95, t);
-    drawBrick(canvas, pos, w, h, b.tile.color, scale: 1 - 0.4 * t, alpha: alpha);
+    for (final b in g.belt) {
+      final color = AppColors.tile(b.tile.color);
+      final sg = geo.slots[b.src];
+      // source brick fades as the ribbon streams out of it
+      if (b.a0 != null) {
+        final c0 = b.a0! - b.colLen;
+        final pr = ((b.h - c0) / (g.tileLen * 0.55)).clamp(0.0, 1.0);
+        if (pr < 1) {
+          final vertical = sg.dir.dx.abs() < 0.5;
+          final w = (vertical ? sg.cross : sg.along) * 0.96;
+          final h = (vertical ? sg.along : sg.cross) * 0.96;
+          drawBrick(canvas, b.from, w, h, b.tile.color, scale: 1 - 0.25 * pr, alpha: 1 - pr);
+        }
+      }
+      final tgt = b.target != null ? geo.slots[b.target!] : null;
+      final diverting = tgt != null && b.past > 0;
+      for (var j = 0; j < n; j++) {
+        final x = b.h - j * sp;
+        if (diverting) {
+          final pj = b.past - j * sp;
+          if (pj < 0) {
+            final u = tgt.gateArc + pj;
+            _slat(canvas, geo.belt.pointAt(u), geo.belt.angleAt(u), th, geo.beltWidth * 1.02, color, j);
+          } else if (pj <= b.colT && b.colT > 0) {
+            final v = b.dropTo - tgt.gate;
+            final c = Offset.lerp(tgt.gate, b.dropTo, pj / b.colT)!;
+            _slat(canvas, c, math.atan2(v.dy, v.dx), th, tgt.cross * 0.94, color, j);
+          }
+          continue;
+        }
+        if (b.a0 != null && x < b.a0!) {
+          final dd = b.a0! - x;
+          if (dd > b.colLen || b.colLen <= 0) continue;
+          final v = b.from - sg.gate;
+          final c = Offset.lerp(sg.gate, b.from, dd / b.colLen)!;
+          _slat(canvas, c, math.atan2(v.dy, v.dx), th, sg.cross * 0.94, color, j);
+          continue;
+        }
+        _slat(canvas, geo.belt.pointAt(x), geo.belt.angleAt(x), th, geo.beltWidth * 1.02, color, j);
+      }
+    }
   }
 
   // -------------------------------------------------------------- effects

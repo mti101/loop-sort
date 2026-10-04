@@ -27,22 +27,24 @@ class SlotDisp {
   double settle = 0; // landing bounce
 }
 
-enum BPhase { lift, ride, drop }
-
+/// A tile travelling on the conveyor. It is drawn as a ribbon of thin slats:
+/// slat j sits at belt coordinate (h - j*sp). While the head is behind the
+/// source gate the slats are still streaming out of the slot ("emerging");
+/// after the head passes the target gate they stream into that slot.
 class BeltV {
-  BeltV(this.tile, this.src, {required this.delay, required this.from});
+  BeltV(this.tile, this.src, {required this.from, required this.h, required this.colLen, required this.a0});
   final VTile tile;
   final int src;
-  BPhase phase = BPhase.lift;
-  double delay;
-  double t = 0;
-  Offset from;
-  double u = 0;
+  final Offset from; // where the brick sat in its slot
+  double h; // head coordinate along the belt (unwrapped while emerging)
+  final double colLen; // gate -> brick distance
+  double? a0; // source gate arc while emerging, null once fully on the belt
   int? target;
-  double dist = 0;
-  Offset dropFrom = Offset.zero;
+  double rem = 0; // belt distance from head to the target gate
+  double past = 0; // distance the head has travelled beyond the target gate
   Offset dropTo = Offset.zero;
-  double spin = 0;
+  double colT = 0; // gate -> landing spot distance
+  bool get diverting => target != null && past > 0;
 }
 
 class Particle {
@@ -119,12 +121,12 @@ class GameController extends ChangeNotifier {
   VoidCallback? onStuck;
 
   bool get canUndo => _history.isNotEmpty;
-  int get beltCount => belt.where((b) => b.phase != BPhase.drop).length;
+  int get beltCount => belt.where((b) => !b.diverting).length;
   int get beltCap => lv.beltCap;
   int get completeCount => slots.where((s) => s.complete).length;
 
   /// True while tiles are being lifted or are on their way to a slot.
-  bool get busy => belt.any((b) => b.phase != BPhase.ride || b.target != null);
+  bool get busy => belt.any((b) => b.a0 != null || b.target != null);
 
   void showToast(String msg, {int ms = 1700}) {
     toast.value = msg;
@@ -137,9 +139,22 @@ class GameController extends ChangeNotifier {
     _lastSize = s;
     geo = BoardGeometry.build(lv, s);
     // keep circulating tiles inside the (possibly new) path length
+    _ribbon(geo!);
     for (final b in belt) {
-      if (b.phase == BPhase.ride) b.u = geo!.belt.wrap(b.u);
+      if (b.a0 == null && !b.diverting) b.h = geo!.belt.wrap(b.h);
     }
+  }
+
+  // ribbon metrics: every tile occupies [tileLen] of belt made of [slatN] slats
+  double tileLen = 100;
+  int slatN = 10;
+  double slatSp = 10;
+
+  void _ribbon(BoardGeometry g) {
+    final cap = lv.beltCap;
+    tileLen = (g.belt.length / (cap + 0.4)).clamp(g.tile * 0.55, g.tile * 2.2);
+    slatN = (tileLen / (g.tile * 0.1)).round().clamp(6, 28);
+    slatSp = tileLen / slatN;
   }
 
   void _reset() {
@@ -206,21 +221,28 @@ class GameController extends ChangeNotifier {
     final r = res.run;
     final count = d.tiles.length;
     final lifted = <BeltV>[];
+    if (g != null) _ribbon(g);
     for (var k = 0; k < r; k++) {
       final tile = d.tiles[k];
       tile.hidden = false;
-      final from = g == null ? Offset.zero : g.slots[i].tileCenter(k, count);
-      lifted.add(BeltV(tile, i, delay: k * 0.085, from: from));
+      final sg = g?.slots[i];
+      final from = sg == null ? Offset.zero : sg.tileCenter(k, count);
+      final a0 = sg?.gateArc ?? 0.0;
+      final col = sg == null ? 0.0 : (from - sg.gate).distance;
+      final c0 = sg == null ? 0.0 : (sg.tileCenter(0, count) - sg.gate).distance;
+      // tile k starts streaming out once its predecessor ribbon has cleared
+      final h0 = a0 - c0 - k * tileLen;
+      lifted.add(BeltV(tile, i, from: from, h: h0, colLen: col, a0: a0));
     }
     d.tiles.removeRange(0, r);
     // tile order matches the logical belt: old tiles first, then the new run
-    final order = <BeltV>[...belt.where((b) => b.phase == BPhase.ride), ...lifted];
+    final order = <BeltV>[...belt, ...lifted];
     belt.addAll(lifted);
     for (final dp in res.drops) {
       if (dp.beltIndex >= order.length) continue;
       final bv = order[dp.beltIndex];
       bv.target = dp.slot;
-      if (bv.phase == BPhase.ride) _setDistance(bv);
+      _setDistance(bv);
     }
     notifyListeners();
   }
@@ -228,17 +250,20 @@ class GameController extends ChangeNotifier {
   double _speed() {
     final g = geo;
     if (g == null) return 400;
-    return (g.belt.length / 2.1).clamp(320.0, 760.0);
+    return (g.belt.length / 2.4).clamp(300.0, 700.0);
   }
 
   void _setDistance(BeltV b) {
     final g = geo;
     if (g == null || b.target == null) return;
     final arc = g.slots[b.target!].gateArc;
-    var d = (arc - g.belt.wrap(b.u)) % g.belt.length;
+    final from = b.a0 ?? g.belt.wrap(b.h);
+    var d = (arc - from) % g.belt.length;
     if (d < 0) d += g.belt.length;
-    if (b.phase == BPhase.lift && b.src == b.target && d < 1) d = g.belt.length;
-    b.dist = d;
+    if (b.a0 != null && b.src == b.target && d < 1) d = g.belt.length;
+    if (b.a0 == null && d < slatSp * 0.5) d += g.belt.length;
+    b.rem = d;
+    b.past = 0;
   }
 
   void _shake(int i) {
@@ -263,9 +288,10 @@ class GameController extends ChangeNotifier {
     }
     belt.clear();
     final g = geo;
+    if (g != null) _ribbon(g);
     for (var k = 0; k < s.belt.length; k++) {
-      final b = BeltV(s.belt[k], 0, delay: 0, from: Offset.zero)..phase = BPhase.ride;
-      b.u = g == null ? 0 : (g.belt.length * 0.35 + k * g.tile * 0.6);
+      final b = BeltV(s.belt[k], 0, from: Offset.zero, h: 0, colLen: 0, a0: null);
+      b.h = g == null ? 0 : g.belt.wrap(g.belt.length * 0.35 - k * tileLen);
       belt.add(b);
     }
     status = GameStatus.playing;
@@ -348,73 +374,126 @@ class GameController extends ChangeNotifier {
     _checkEnd(dt);
   }
 
-  bool _gateBusy(BoardGeometry g, double arc, BeltV self) {
-    final gap = g.tile * 0.62;
-    for (final o in belt) {
-      if (identical(o, self) || o.phase != BPhase.ride) continue;
-      var d = (o.u - arc) % g.belt.length;
-      if (d < 0) d += g.belt.length;
-      if (d < gap || d > g.belt.length - gap) return true;
+  /// Belt coordinate of the last slat of [b] that is physically on the belt.
+  double _tailX(BeltV b, BoardGeometry g) {
+    final n1 = (slatN - 1) * slatSp;
+    if (b.target != null && b.past > 0) {
+      return g.slots[b.target!].gateArc + b.past - n1;
     }
-    return false;
+    if (b.a0 != null) return math.max(b.h - n1, b.a0!);
+    return b.h - n1;
   }
 
   void _updateBelt(BoardGeometry g, double dt) {
     final v = _speed();
     final len = g.belt.length;
-    for (final b in List<BeltV>.of(belt)) {
-      switch (b.phase) {
-        case BPhase.lift:
-          if (b.delay > 0) {
-            b.delay -= dt;
-            break;
+    final sp = slatSp;
+    final step = v * dt;
+    if (belt.isEmpty) return;
+    double wrapd(double x) {
+      var r = x % len;
+      if (r < 0) r += len;
+      return r;
+    }
+
+    // riders that occupy the belt
+    final riders = <BeltV>[];
+    for (final b in belt) {
+      if (b.target != null && b.past - (slatN - 1) * sp >= 0) continue; // fully diverted
+      riders.add(b);
+    }
+    final n1 = (slatN - 1) * sp;
+    bool sameRun(BeltV x, BeltV y) => x.a0 != null && y.a0 != null && x.a0 == y.a0;
+
+    Map<BeltV, double> moves(Map<BeltV, double> lm) {
+      final out = <BeltV, double>{};
+      for (final b in belt) {
+        if (b.diverting) {
+          out[b] = step;
+          continue;
+        }
+        final hx = b.a0 != null ? math.max(b.h, b.a0!) : b.h;
+        var gapRaw = double.infinity;
+        var gapBelt = double.infinity;
+        for (final o in riders) {
+          if (identical(o, b)) continue;
+          final lmo = lm[o] ?? 0;
+          if (sameRun(o, b)) {
+            if (o.h > b.h) gapRaw = math.min(gapRaw, o.h - n1 - b.h - sp + lmo);
+            continue;
           }
-          final arc = g.slots[b.src].gateArc;
-          if (b.t >= 1 && _gateBusy(g, arc, b)) break; // wait at the gate
-          b.t = math.min(1.0, b.t + dt / 0.2);
-          if (b.t >= 1 && !_gateBusy(g, arc, b)) {
-            b.phase = BPhase.ride;
-            b.u = arc;
-            if (b.target != null) _setDistance(b);
-          }
-          break;
-        case BPhase.ride:
-          final step = v * dt;
-          b.u += step;
-          if (b.u >= len) b.u -= len;
-          if (b.target != null) {
-            b.dist -= step;
-            if (b.dist <= 0) {
-              final tg = g.slots[b.target!];
-              b.phase = BPhase.drop;
-              b.t = 0;
-              b.dropFrom = g.belt.pointAt(tg.gateArc);
-              final d = slots[b.target!];
-              b.dropTo = tg.nextCenter(d.tiles.length + d.incoming);
-              d.incoming++;
-            }
-          }
-          break;
-        case BPhase.drop:
-          b.t = math.min(1.0, b.t + dt / 0.17);
-          if (b.t >= 1) {
-            final d = slots[b.target!];
-            d.incoming--;
-            d.tiles.insert(0, b.tile);
-            d.settle = 1;
-            belt.remove(b);
-            onSound?.call('deliver');
-            onHaptic?.call(0);
-            _burst(g.slots[b.target!].nextCenter(d.tiles.length - 1), b.tile.color, 5, 0.6);
-            final cols = [for (final t in d.tiles) t.color];
-            if (!d.complete && isComplete(cols, lv.capacity)) {
-              d.complete = true;
-              d.flash = 1;
-              _celebrateSlot(g, b.target!, b.tile.color);
-            }
-          }
-          break;
+          var fd = wrapd(_tailX(o, g) - hx);
+          if (fd > len - sp) fd = 0;
+          gapBelt = math.min(gapBelt, fd - sp + lmo);
+        }
+        final mRaw = math.min(step, math.max(0.0, gapRaw));
+        double m;
+        if (b.a0 != null && b.h < b.a0!) {
+          final colRoom = b.a0! - b.h;
+          m = mRaw <= colRoom ? mRaw : colRoom + math.min(mRaw - colRoom, math.max(0.0, gapBelt));
+        } else {
+          m = math.min(mRaw, math.max(0.0, gapBelt));
+        }
+        out[b] = m;
       }
+      return out;
+    }
+
+    final move1 = moves(const {});
+    final move2 = moves(move1);
+    for (final b in belt) {
+      move2[b] = math.max(move2[b] ?? 0, move1[b] ?? 0);
+    }
+
+    for (final b in List<BeltV>.of(belt)) {
+      final m = move2[b] ?? 0;
+      final hOld = b.h;
+      b.h += m;
+      // belt distance covered by the head
+      var beltMove = m;
+      if (b.a0 != null) {
+        beltMove = math.max(0.0, b.h - math.max(hOld, b.a0!));
+        if (b.h - (slatN - 1) * sp >= b.a0!) {
+          b.h = wrapd(b.h);
+          b.a0 = null;
+        }
+      } else {
+        b.h = wrapd(b.h);
+      }
+      if (b.target != null) {
+        if (b.past > 0) {
+          b.past += m;
+        } else {
+          b.rem -= beltMove;
+          if (b.rem <= 0) {
+            b.past = -b.rem + 0.001;
+            b.rem = 0;
+            final tg = g.slots[b.target!];
+            final d = slots[b.target!];
+            b.dropTo = tg.nextCenter(d.tiles.length + d.incoming);
+            b.colT = (b.dropTo - tg.gate).distance;
+            d.incoming++;
+          }
+        }
+        if (b.past > 0 && b.past - (slatN - 1) * sp >= b.colT) _land(g, b);
+      }
+    }
+  }
+
+  void _land(BoardGeometry g, BeltV b) {
+    final d = slots[b.target!];
+    d.incoming--;
+    d.tiles.insert(0, b.tile);
+    d.settle = 1;
+    belt.remove(b);
+    onSound?.call('deliver');
+    onHaptic?.call(0);
+    _burst(g.slots[b.target!].nextCenter(d.tiles.length - 1), b.tile.color, 5, 0.6);
+    final cols = [for (final t in d.tiles) t.color];
+    if (!d.complete && isComplete(cols, lv.capacity)) {
+      d.complete = true;
+      d.flash = 1;
+      _celebrateSlot(g, b.target!, b.tile.color);
     }
   }
 
@@ -471,7 +550,7 @@ class GameController extends ChangeNotifier {
   // ------------------------------------------------------------ end states
   void _checkEnd(double dt) {
     if (status != GameStatus.playing || _notified) return;
-    if (belt.any((b) => b.phase != BPhase.ride || b.target != null)) return;
+    if (belt.any((b) => b.a0 != null || b.target != null)) return;
     if (isWin(lv, state)) {
       winTimer = winTimer < 0 ? 0 : winTimer + dt;
       if (winTimer > 0.35) {
