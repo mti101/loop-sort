@@ -52,7 +52,12 @@ class BoardPainter extends CustomPainter {
     }
 
     stroke(bw * 1.9, const Color(0x55000018), off: Offset(0, bw * 0.16), blur: MaskFilter.blur(BlurStyle.normal, bw * 0.16));
-    stroke(bw * 1.74, const Color(0xFF1A2468));
+    final full = g.beltCount >= g.beltCap || g.capFlash > 0;
+    if (full) {
+      final pulse = 0.55 + 0.45 * math.sin(g.time * 9);
+      stroke(bw * 2.0, const Color(0xFFFF3B4A).withValues(alpha: 0.35 + 0.45 * pulse));
+    }
+    stroke(bw * 1.74, full ? const Color(0xFF8A1F3A) : const Color(0xFF1A2468));
     stroke(bw * 1.6, const Color(0xFF6C84EA), off: Offset(0, -bw * 0.03));
     stroke(bw * 1.52, const Color(0xFF4960CC), off: Offset(0, bw * 0.015));
     stroke(bw * 1.26, const Color(0xFF2B3A98));
@@ -272,7 +277,7 @@ class BoardPainter extends CustomPainter {
   }
 
   void _beltTiles(Canvas canvas, BoardGeometry geo) {
-    final n = g.slatN, sp = g.slatSp, th = sp * 0.96;
+    final n = g.slatN, sp = g.slatSp, th = sp * 0.82;
     // landing bricks first so the incoming stream pours onto them
     for (final b in g.belt) {
       if (b.target != null && b.past > 0 && b.colT > 0) {

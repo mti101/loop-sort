@@ -463,7 +463,7 @@ class _AvatarChip extends StatelessWidget {
         gradient: const LinearGradient(colors: [Color(0xFF6B82E6), Color(0xFF3D52C0)], begin: Alignment.topCenter, end: Alignment.bottomCenter),
         border: Border.all(color: const Color(0xFF1B2766), width: 3),
       ),
-      child: ClipOval(child: Transform.translate(offset: const Offset(0, 3), child: const FittedBox(fit: BoxFit.cover, child: Mascot(size: 40)))),
+      child: const ClipOval(child: MascotHead(size: 34)),
     );
   }
 }
@@ -712,7 +712,7 @@ class _TipCard extends StatelessWidget {
                   color: const Color(0xFF3C4FC0),
                   border: Border.all(color: Colors.white, width: 3),
                 ),
-                child: ClipOval(child: Transform.translate(offset: const Offset(0, 6), child: const FittedBox(fit: BoxFit.cover, child: Mascot(size: 64)))),
+                child: const ClipOval(child: MascotHead(size: 58)),
               ),
             ),
           ],

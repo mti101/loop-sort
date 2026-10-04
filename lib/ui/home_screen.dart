@@ -86,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 const Spacer(flex: 2),
                 const LogoMark(scale: 1.1),
                 const SizedBox(height: 4),
-                const Mascot(size: 150),
+                const HeroArt(width: 290),
                 const Spacer(flex: 2),
                 AnimatedBuilder(
                   animation: _pulse,

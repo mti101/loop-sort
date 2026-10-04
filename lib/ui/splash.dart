@@ -52,9 +52,9 @@ class _SplashScreenState extends State<SplashScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               LogoMark(scale: 1.15),
-              SizedBox(height: 10),
-              Mascot(size: 140),
-              SizedBox(height: 26),
+              SizedBox(height: 6),
+              HeroArt(width: 300),
+              SizedBox(height: 22),
               SizedBox(
                 width: 150,
                 child: LinearProgressIndicator(

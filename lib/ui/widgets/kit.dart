@@ -487,11 +487,17 @@ class _MascotState extends State<Mascot> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final h = widget.size * 1.3;
     return AnimatedBuilder(
       animation: _c,
-      builder: (context, _) => CustomPaint(
-        size: Size(widget.size, widget.size * 1.1),
-        painter: MascotPainter(_c.value, widget.mood),
+      builder: (context, child) {
+        final bob = math.sin(_c.value * math.pi * 2) * widget.size * 0.025;
+        return Transform.translate(offset: Offset(0, bob), child: child);
+      },
+      child: SizedBox(
+        width: widget.size,
+        height: h,
+        child: Image.asset('assets/art/pip.png', fit: BoxFit.contain, filterQuality: FilterQuality.medium),
       ),
     );
   }
@@ -610,24 +616,54 @@ class LogoMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 300 * scale,
-      height: 150 * scale,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned.fill(child: CustomPaint(painter: _LogoTilesPainter())),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              OutlinedText('LOOP', size: 74 * scale, color: AppColors.amber, outline: const Color(0xFF3A2200), shadowDepth: 6 * scale),
-              Transform.translate(
-                offset: Offset(0, -6 * scale),
-                child: OutlinedText('SORT', size: 56 * scale, color: Colors.white, outline: const Color(0xFF0B2230), shadowDepth: 5 * scale),
-              ),
-            ],
-          ),
-        ],
+      width: 330 * scale,
+      height: 172 * scale,
+      child: Image.asset('assets/art/logo.png', fit: BoxFit.contain, filterQuality: FilterQuality.medium),
+    );
+  }
+}
+
+/// The hero scene (character, machine, puppy) with a gentle float.
+class HeroArt extends StatefulWidget {
+  const HeroArt({super.key, this.width = 300});
+  final double width;
+  @override
+  State<HeroArt> createState() => _HeroArtState();
+}
+
+class _HeroArtState extends State<HeroArt> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat(reverse: true);
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) => Transform.translate(offset: Offset(0, -6 * Curves.easeInOut.transform(_c.value)), child: child),
+      child: SizedBox(
+        width: widget.width,
+        child: Image.asset('assets/art/hero.png', fit: BoxFit.contain, filterQuality: FilterQuality.medium),
       ),
+    );
+  }
+}
+
+/// Round avatar showing the character's face.
+class MascotHead extends StatelessWidget {
+  const MascotHead({super.key, required this.size});
+  final double size;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF7A5BE0)),
+      clipBehavior: Clip.antiAlias,
+      child: Image.asset('assets/art/pip_head.png', fit: BoxFit.cover, filterQuality: FilterQuality.medium),
     );
   }
 }

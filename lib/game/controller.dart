@@ -153,7 +153,7 @@ class GameController extends ChangeNotifier {
   void _ribbon(BoardGeometry g) {
     final cap = lv.beltCap;
     tileLen = (g.belt.length / (cap + 0.4)).clamp(g.tile * 0.55, g.tile * 2.2);
-    slatN = (tileLen / (g.tile * 0.1)).round().clamp(6, 28);
+    slatN = (tileLen / (g.tile * 0.135)).round().clamp(5, 22);
     slatSp = tileLen / slatN;
   }
 
