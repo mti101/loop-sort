@@ -9,13 +9,13 @@ Tap, loop and sort colorful tiles in a satisfying conveyor puzzle. 200 levels!
 ## Full description (max 4000)
 Ready for a puzzle that is easy to learn and hard to put down?
 
-LOOP SORT is a cozy-but-clever sorting game. Colorful tiles wait in stacks. Orders pop up on the conveyor line. Tap a stack to send its tiles onto the loop and fill the orders before the belt jams!
+LOOP SORT is a cozy-but-clever sorting game. Colorful tiles wait in tubes around a factory conveyor. Tap a tube to launch its top tiles onto the loop and watch them ride around and drop into a matching tube. Sort every color before the belt jams!
 
 HOW IT WORKS
-• Tap a stack to send its front tiles to the loop.
-• Tiles that match an open order jump straight in.
-• Everything else rides the loop, and the loop has limited room.
-• Complete every order to clear the level.
+• Tap a tube to send its top run of same-color tiles onto the conveyor.
+• Tiles ride the loop and drop into the next tube that is empty or matches their color.
+• The conveyor has limited room, so plan every move.
+• Make every tube a single color to clear the level.
 
 Simple to play. Surprisingly deep to master. Every tap changes what you can do next, so plan ahead!
 
@@ -23,8 +23,7 @@ FEATURES
 • 200 hand-balanced levels that start gentle and get brilliantly tricky
 • Boss levels for a real challenge
 • Mystery "?" tiles that reveal themselves as you dig
-• Locked stacks that open as you complete orders
-• Helpful boosters: Undo, Hint, extra Loop space, and an extra Order slot
+• Helpful boosters: Undo, Hint and extra conveyor space
 • Earn stars and coins, collect daily gifts
 • Juicy animations, satisfying sounds and haptic feedback
 • Colorblind-friendly: every color has its own symbol
