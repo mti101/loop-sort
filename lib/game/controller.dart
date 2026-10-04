@@ -79,6 +79,10 @@ class HintResult {
   final bool found;
 }
 
+class FrameTick extends ChangeNotifier {
+  void tick() => notifyListeners();
+}
+
 class GameController extends ChangeNotifier {
   GameController(LevelData level, {this.onSound, this.onHaptic}) : base = level, lv = level {
     _reset();
@@ -114,6 +118,9 @@ class GameController extends ChangeNotifier {
   bool _notified = false;
   bool _solveBusy = false;
   int tutorialSlot = -1;
+
+  /// Fires every animated frame; only the board painter listens to it.
+  final FrameTick frame = FrameTick();
 
   final ValueNotifier<String?> toast = ValueNotifier<String?>(null);
   Timer? _toastTimer;
@@ -372,6 +379,14 @@ class GameController extends ChangeNotifier {
     if (g != null) _updateBelt(g, dt);
     _updateFx(dt);
     _checkEnd(dt);
+    final animating = belt.isNotEmpty ||
+        particles.isNotEmpty ||
+        popups.isNotEmpty ||
+        capFlash > 0 ||
+        hintSlot >= 0 ||
+        tutorialSlot >= 0 ||
+        slots.any((s) => s.flash > 0 || s.pop > 0 || s.shake > 0 || s.settle > 0);
+    if (animating) frame.tick();
   }
 
   /// Belt coordinate of the last slat of [b] that is physically on the belt.
@@ -473,6 +488,7 @@ class GameController extends ChangeNotifier {
             b.dropTo = tg.nextCenter(d.tiles.length + d.incoming);
             b.colT = (b.dropTo - tg.gate).distance;
             d.incoming++;
+            notifyListeners();
           }
         }
         if (b.past > 0 && b.past - (slatN - 1) * sp >= b.colT) _land(g, b);
@@ -486,6 +502,7 @@ class GameController extends ChangeNotifier {
     d.tiles.insert(0, b.tile);
     d.settle = 1;
     belt.remove(b);
+    notifyListeners();
     onSound?.call('deliver');
     onHaptic?.call(0);
     _burst(g.slots[b.target!].nextCenter(d.tiles.length - 1), b.tile.color, 5, 0.6);
@@ -595,6 +612,7 @@ class GameController extends ChangeNotifier {
   @override
   void dispose() {
     _toastTimer?.cancel();
+    frame.dispose();
     toast.dispose();
     super.dispose();
   }

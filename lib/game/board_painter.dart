@@ -11,7 +11,7 @@ import 'painting.dart';
 final Paint _p = Paint()..isAntiAlias = true;
 
 class BoardPainter extends CustomPainter {
-  BoardPainter(this.g) : super(repaint: g);
+  BoardPainter(this.g) : super(repaint: Listenable.merge([g, g.frame]));
   final GameController g;
 
   @override
