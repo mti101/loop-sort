@@ -6,6 +6,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loopsort/game/board_painter.dart';
 import 'package:loopsort/game/controller.dart';
 import 'package:loopsort/game/engine.dart';
+import 'package:loopsort/game/layout.dart';
+
+const _size = Size(360, 560);
+
+void _paint(GameController g) {
+  final rec = ui.PictureRecorder();
+  BoardPainter(g).paint(Canvas(rec), _size);
+  rec.endRecording().dispose();
+}
+
+void _settle(GameController g, {int max = 900}) {
+  for (var k = 0; k < max && g.busy; k++) {
+    g.update(1 / 60);
+  }
+}
+
+List<List<int>> _display(GameController g) => [
+      for (final s in g.slots) [for (final t in s.tiles) t.color]
+    ];
 
 void main() {
   late List<LevelData> levels;
@@ -14,104 +33,72 @@ void main() {
     levels = parseLevels(File('assets/levels/levels.json').readAsStringSync());
   });
 
-  void paintOnce(GameController g, Size size) {
-    final rec = ui.PictureRecorder();
-    final canvas = Canvas(rec);
-    BoardPainter(g).paint(canvas, size);
-    rec.endRecording().dispose();
-  }
+  test('geometry: gates are ordered along the belt for every level', () {
+    for (final lv in levels) {
+      final geo = BoardGeometry.build(lv, _size);
+      expect(geo.slots.length, lv.slotCount);
+      // gate arcs must increase with slot index (cyclically, one wrap at most)
+      var wraps = 0;
+      for (var i = 0; i < geo.slots.length; i++) {
+        final a = geo.slots[i].gateArc;
+        final b = geo.slots[(i + 1) % geo.slots.length].gateArc;
+        if (b < a) wraps++;
+      }
+      expect(wraps, lessThanOrEqualTo(1), reason: 'level ${lv.id} (${lv.layout}) slot order vs belt arcs');
+      for (final s in geo.slots) {
+        expect(geo.bounds.inflate(4).contains(s.base), isTrue, reason: 'level ${lv.id} slot outside bounds');
+      }
+    }
+  });
 
   test('headless playback of every level ends in a won, consistent view', () {
-    const size = Size(360, 560);
     for (final lv in levels) {
       final g = GameController(lv);
-      g.setSize(size);
+      g.setSize(_size);
       var won = false;
       g.onWin = () => won = true;
-      var frames = 0;
-      for (final i in lv.solution) {
-        g.tapStack(i);
-        // let the animation breathe a few frames between taps
-        for (var k = 0; k < 6; k++) {
-          g.update(1 / 60);
-          frames++;
-          if (frames % 25 == 0) paintOnce(g, size);
-        }
+      var n = 0;
+      for (final m in lv.solution) {
+        g.tapSlot(m);
+        _settle(g);
+        expect(_display(g), g.state.slots, reason: 'level ${lv.id} after tap $n: display != logic');
+        if (n++ % 3 == 0) _paint(g);
       }
-      for (var k = 0; k < 600 && !won; k++) {
+      for (var k = 0; k < 300 && !won; k++) {
         g.update(1 / 60);
-        if (k % 40 == 0) paintOnce(g, size);
       }
       expect(won, true, reason: 'level ${lv.id} did not reach win state');
       expect(g.status, GameStatus.won);
-      expect(g.dLoop.length, 0, reason: 'level ${lv.id} loop not empty');
-      for (final s in g.dStacks) {
-        expect(s, isEmpty, reason: 'level ${lv.id}');
-      }
+      expect(g.belt, isEmpty, reason: 'level ${lv.id} belt not empty');
       expect(g.moves, lv.solution.length);
       g.dispose();
     }
   });
 
-  test('display model matches logic state after each settled move', () {
-    const size = Size(360, 560);
-    for (final lv in levels.where((l) => l.id % 7 == 0)) {
+  test('undo restores state and view', () {
+    for (final lv in levels.where((l) => l.id % 9 == 4)) {
       final g = GameController(lv);
-      g.setSize(size);
-      for (final i in lv.solution) {
-        g.tapStack(i);
-        for (var k = 0; k < 160; k++) {
-          g.update(1 / 60);
-        }
-        if (g.status == GameStatus.won) break;
-        expect(g.dLoop.length, g.state.loopCount, reason: 'level ${lv.id} loop');
-        for (var s = 0; s < g.dStacks.length; s++) {
-          expect(g.dStacks[s], g.state.stacks[s], reason: 'level ${lv.id} stack $s');
-        }
-        for (var j = 0; j < g.state.active.length; j++) {
-          final a = g.state.active[j];
-          if (a == null) {
-            expect(g.dSlots[j].empty, true);
-          } else {
-            expect(g.dSlots[j].need, a.need, reason: 'level ${lv.id} slot $j');
-          }
-        }
-        expect(g.dDone, g.state.done);
-      }
+      g.setSize(_size);
+      final start = _display(g);
+      g.tapSlot(lv.solution.first);
+      _settle(g);
+      expect(g.canUndo, true);
+      g.undo();
+      expect(_display(g), start, reason: 'level ${lv.id}');
+      expect(g.belt, isEmpty);
+      expect(g.moves, 0);
+      _paint(g);
       g.dispose();
     }
   });
 
-  test('undo restores state and view', () {
-    final lv = levels[9];
+  test('belt capacity booster raises the limit', () {
+    final lv = levels[5];
     final g = GameController(lv);
-    g.setSize(const Size(360, 560));
-    g.tapStack(lv.solution[0]);
-    for (var k = 0; k < 120; k++) {
-      g.update(1 / 60);
-    }
-    expect(g.moves, 1);
-    expect(g.undo(), true);
-    expect(g.moves, 0);
-    for (var s = 0; s < g.dStacks.length; s++) {
-      expect(g.dStacks[s], lv.stacks[s]);
-    }
-    g.dispose();
-  });
-
-  test('extra slot and extra capacity boosters keep view in sync', () {
-    final lv = levels[20];
-    final g = GameController(lv);
-    g.setSize(const Size(360, 560));
-    final slotsBefore = g.dSlots.length;
-    expect(g.addOrderSlot(), true);
-    for (var k = 0; k < 200; k++) {
-      g.update(1 / 60);
-    }
-    expect(g.dSlots.length, slotsBefore + 1);
-    expect(g.state.active.length, slotsBefore + 1);
-    g.addLoopCapacity(2);
-    expect(g.dCap, lv.cap + 2);
+    g.setSize(_size);
+    final c = g.beltCap;
+    g.addBeltCapacity(2);
+    expect(g.beltCap, c + 2);
     g.dispose();
   });
 }

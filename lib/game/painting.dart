@@ -144,63 +144,80 @@ void drawText(Canvas canvas, String text, Offset center, double size,
 
 final Paint _p = Paint()..isAntiAlias = true;
 
-/// Draws a glossy 3D-ish tile. [scale] and [alpha] are for animation.
-void drawTile(Canvas canvas, Offset c, double size, int color,
+/// Draws a glossy 3D brick centred on [c] with outer size [w] x [h].
+void drawBrick(Canvas canvas, Offset c, double w, double h, int color,
     {bool hidden = false, double scale = 1, double alpha = 1, double dim = 0, bool glow = false}) {
   if (alpha <= 0.01) return;
-  final s = size * scale;
+  w *= scale;
+  h *= scale;
   final base = hidden ? AppColors.hidden : AppColors.tile(color);
-  final dark = AppColors.shade(base, -0.2);
-  final light = AppColors.shade(base, 0.16);
-  final r = s * 0.24;
-  final body = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: c.translate(0, -s * 0.04), width: s, height: s * 0.94), Radius.circular(r));
-  final edge = body.shift(Offset(0, s * 0.1));
+  final dark = AppColors.shade(base, -0.22);
+  final deep = AppColors.shade(base, -0.34);
+  final light = AppColors.shade(base, 0.2);
   final a = (alpha * 255).round().clamp(0, 255);
+  final thick = h * 0.13;
+  final r = math.min(w, h) * 0.2;
+  final face = Rect.fromCenter(center: c.translate(0, -thick * 0.45), width: w, height: h - thick);
+  final body = RRect.fromRectAndRadius(face, Radius.circular(r));
+  final side = RRect.fromRectAndRadius(face.shift(Offset(0, thick)), Radius.circular(r));
 
   if (glow) {
-    canvas.drawRRect(body.inflate(s * 0.12),
-        _p..color = Colors.white.withAlpha((a * 0.35).round())..maskFilter = MaskFilter.blur(BlurStyle.normal, s * 0.18));
+    canvas.drawRRect(body.inflate(w * 0.12),
+        _p..color = Colors.white.withAlpha((a * 0.4).round())..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.16));
     _p.maskFilter = null;
   }
-  // drop shadow
-  canvas.drawRRect(edge.shift(Offset(0, s * 0.04)), _p..color = Colors.black.withAlpha((a * 0.28).round()));
-  // thickness
-  canvas.drawRRect(edge, _p..color = dark.withAlpha(a));
-  // face
-  canvas.drawRRect(body, _p..color = base.withAlpha(a));
-  // top gloss
-  final gloss = RRect.fromRectAndRadius(
-      Rect.fromLTWH(body.left + s * 0.07, body.top + s * 0.06, s * 0.86, s * 0.34), Radius.circular(r * 0.8));
-  canvas.drawRRect(gloss, _p..color = light.withAlpha((a * 0.75).round()));
-  // inner rim
+  // contact shadow
+  canvas.drawRRect(side.shift(Offset(0, h * 0.035)).inflate(w * 0.01), _p..color = Colors.black.withAlpha((a * 0.30).round()));
+  // thickness (bottom lip)
+  canvas.drawRRect(side, _p..color = deep.withAlpha(a));
+  // face gradient
+  _p.shader = ui.Gradient.linear(face.topCenter, face.bottomCenter,
+      [light.withAlpha(a), base.withAlpha(a), dark.withAlpha(a)], [0.0, 0.42, 1.0]);
+  canvas.drawRRect(body, _p);
+  _p.shader = null;
+  // bevel highlight (top-left) and inner shade (bottom-right)
   canvas.drawRRect(
-      body.deflate(s * 0.035),
+      body.deflate(w * 0.03),
       _p
         ..style = PaintingStyle.stroke
-        ..strokeWidth = s * 0.04
-        ..color = Colors.white.withAlpha((a * 0.16).round()));
-  _p.style = PaintingStyle.fill;
+        ..strokeWidth = w * 0.045
+        ..shader = ui.Gradient.linear(face.topLeft, face.bottomRight,
+            [Colors.white.withAlpha((a * 0.55).round()), Colors.white.withAlpha(0), Colors.black.withAlpha((a * 0.22).round())],
+            [0.0, 0.5, 1.0]));
+  _p
+    ..shader = null
+    ..style = PaintingStyle.fill;
+  // gloss streak
+  final gloss = Path()
+    ..addRRect(RRect.fromRectAndRadius(
+        Rect.fromLTWH(face.left + w * 0.1, face.top + h * 0.07, w * 0.8, (h - thick) * 0.26), Radius.circular(r * 0.7)));
+  canvas.drawPath(gloss, _p..color = Colors.white.withAlpha((a * 0.26).round()));
 
+  final fc = face.center;
   if (hidden) {
-    final tp = textPainter('?', s * 0.62, color: const Color(0xFF9FB4D8));
-    canvas.saveLayer(body.outerRect.inflate(4), Paint()..color = Color.fromRGBO(255, 255, 255, alpha));
-    tp.paint(canvas, body.center - Offset(tp.width / 2, tp.height / 2));
+    final tp = textPainter('?', math.min(w, h) * 0.66, color: const Color(0xFFA9BBF0));
+    canvas.saveLayer(face.inflate(4), Paint()..color = Color.fromRGBO(255, 255, 255, alpha));
+    tp.paint(canvas, fc - Offset(tp.width / 2, tp.height / 2));
     canvas.restore();
   } else {
+    final sz = math.min(w, h) * 0.56;
     canvas.save();
-    canvas.translate(c.dx, c.dy - s * 0.04);
-    canvas.scale(s * 0.52);
-    canvas.drawPath(
-        Symbols.of(color).shift(const Offset(0.0, 0.035)),
-        _p..color = dark.withAlpha((a * 0.55).round()));
-    canvas.drawPath(Symbols.of(color), _p..color = Colors.white.withAlpha((a * 0.92).round()));
+    canvas.translate(fc.dx, fc.dy);
+    canvas.scale(sz);
+    // embossed: dark offset, light symbol
+    canvas.drawPath(Symbols.of(color).shift(const Offset(0.0, 0.05)), _p..color = deep.withAlpha((a * 0.6).round()));
+    canvas.drawPath(Symbols.of(color), _p..color = Colors.white.withAlpha((a * 0.94).round()));
     canvas.restore();
   }
   if (dim > 0) {
-    canvas.drawRRect(edge.outerRect.inflate(0).let((rc) => RRect.fromRectAndRadius(rc, Radius.circular(r))),
-        _p..color = const Color(0xFF0A1C27).withAlpha((dim * 170).round()));
+    canvas.drawRRect(body, _p..color = const Color(0xFF0A1440).withAlpha((dim * 170).round()));
   }
+}
+
+/// Square-ish convenience wrapper (used by dialogs and badges).
+void drawTile(Canvas canvas, Offset c, double size, int color,
+    {bool hidden = false, double scale = 1, double alpha = 1, double dim = 0, bool glow = false}) {
+  drawBrick(canvas, c, size, size, color, hidden: hidden, scale: scale, alpha: alpha, dim: dim, glow: glow);
 }
 
 extension _Let<T> on T {

@@ -1,81 +1,32 @@
-"""Loop Sort puzzle engine (reference implementation).
+"""Loop Sort v2 reference engine (mirrored by lib/game/engine.dart).
 
-The Dart engine in lib/game/engine.dart MUST mirror this file exactly.
-Levels ship with a stored solution which a Dart unit test replays, so any
-divergence between the two engines is caught in CI.
-
-Rules
------
-* Stacks hold tiles (colour ints). Index 0 is the FRONT (the tappable end).
-* Tapping an unlocked stack sends its whole front run (maximal prefix of the
-  same colour) towards the loop, one tile at a time.
-* A tile is delivered straight into the first ACTIVE order of its colour that
-  still needs tiles. Otherwise it rides the loop.
-* A completed order is replaced by the next order in the queue; loop tiles
-  are then re-absorbed by the active orders (cascading).
-* After the move the loop must hold <= cap tiles, otherwise the move is
-  illegal ("loop full").
-* A stack with lock=n stays locked until n orders have been completed.
-* Win = all orders completed. Lose = no legal move.
+Slots hold stacks of tiles (index 0 = top, the end next to the belt).
+Tapping a slot lifts its whole top same-colour run onto a looping conveyor.
+Slot i sits at belt position i; the belt flows i -> i+1 -> ... -> 0.
+Each belt tile drops into the first slot it passes whose top colour matches
+(or that is empty) and that is not full. A full single-colour slot is complete.
+Win: every tile is in a complete slot. Lose: no legal move.
 """
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
-
-State = Tuple[tuple, tuple, tuple, int, int]  # stacks, loop, active, qi, done
 
 
-@dataclass
+@dataclass(frozen=True)
 class Level:
+    cap: int          # belt capacity (tiles)
+    C: int            # slot capacity
+    slots: tuple      # tuple of tuples (top first) of colour ints
     colors: int
-    cap: int
-    slots: int
-    stacks: List[List[int]]
-    locks: List[int]
-    orders: List[Tuple[int, int]]
 
 
-def initial_state(lv: Level) -> State:
-    n = min(lv.slots, len(lv.orders))
-    active = tuple(lv.orders[:n])
-    return (
-        tuple(tuple(s) for s in lv.stacks),
-        tuple([0] * lv.colors),
-        active,
-        n,
-        0,
-    )
+def complete(stack, C):
+    return len(stack) == C and all(c == stack[0] for c in stack)
 
 
-def is_win(lv: Level, st: State) -> bool:
-    return st[4] == len(lv.orders)
+def initial(lv):
+    return (tuple(tuple(s) for s in lv.slots), ())  # (slots, belt) belt: tuple of (colour,next)
 
 
-def _settle(lv: Level, loop: list, active: list, qi: int, done: int):
-    changed = True
-    while changed:
-        changed = False
-        for j in range(len(active)):
-            a = active[j]
-            if a is None:
-                continue
-            c, need = a
-            if loop[c] > 0:
-                take = min(loop[c], need)
-                loop[c] -= take
-                need -= take
-                active[j] = (c, need)
-                changed = True
-                if need == 0:
-                    done += 1
-                    if qi < len(lv.orders):
-                        active[j] = lv.orders[qi]
-                        qi += 1
-                    else:
-                        active[j] = None
-    return qi, done
-
-
-def front_run(stack: tuple) -> int:
+def run_len(stack):
     if not stack:
         return 0
     c = stack[0]
@@ -85,49 +36,80 @@ def front_run(stack: tuple) -> int:
     return n
 
 
-def apply_move(lv: Level, st: State, i: int) -> Optional[State]:
-    stacks, loop_t, active_t, qi, done = st
-    s = stacks[i]
-    if not s or done < lv.locks[i]:
-        return None
-    c = s[0]
-    n = front_run(s)
-    loop = list(loop_t)
-    active = list(active_t)
-    for _ in range(n):
-        delivered = False
-        for j in range(len(active)):
-            a = active[j]
-            if a is not None and a[0] == c and a[1] > 0:
-                need = a[1] - 1
-                active[j] = (c, need)
-                delivered = True
-                if need == 0:
-                    done += 1
-                    if qi < len(lv.orders):
-                        active[j] = lv.orders[qi]
-                        qi += 1
-                    else:
-                        active[j] = None
-                    qi, done = _settle(lv, loop, active, qi, done)
-                break
-        if not delivered:
-            loop[c] += 1
-    if sum(loop) > lv.cap:
-        return None
-    new_stacks = stacks[:i] + (s[n:],) + stacks[i + 1:]
-    # normalise: drop finished slots (None) to the end, keep order
-    return (new_stacks, tuple(loop), tuple(active), qi, done)
+def accepts(stack, c, C):
+    if len(stack) >= C:
+        return False
+    return (not stack) or stack[0] == c
 
 
-def legal_moves(lv: Level, st: State):
+def is_win(lv, st):
+    slots, belt = st
+    if belt:
+        return False
+    return all((not s) or complete(s, lv.C) for s in slots)
+
+
+def legal_moves(lv, st):
+    slots, belt = st
+    free = lv.cap - len(belt)
     out = []
-    for i in range(len(st[0])):
-        ns = apply_move(lv, st, i)
-        if ns is not None:
-            out.append((i, ns))
+    for i, s in enumerate(slots):
+        if not s or complete(s, lv.C):
+            continue
+        if run_len(s) <= free:
+            out.append(i)
     return out
 
 
-def remaining_tiles(st: State) -> int:
-    return sum(len(s) for s in st[0])
+def settle(lv, slots, belt):
+    """Advance the belt until no tile can drop. Returns (slots, belt, deps).
+    deps: list of (index into the input belt list, slot) in drop order."""
+    S = len(slots)
+    slots = [list(s) for s in slots]
+    belt = [[c, n, k] for k, (c, n) in enumerate(belt)]
+    deps = []
+    idle = 0
+    while belt and idle < S:
+        dropped = False
+        nb = []
+        for t in belt:
+            c, g, k = t
+            if accepts(slots[g], c, lv.C):
+                slots[g].insert(0, c)
+                deps.append((k, g))
+                dropped = True
+            else:
+                t[1] = (g + 1) % S
+                nb.append(t)
+        belt = nb
+        idle = 0 if dropped else idle + 1
+    # after S idle rounds every tile is back at its original next gate
+    return (tuple(tuple(s) for s in slots),
+            tuple((t[0], t[1]) for t in belt), deps, [t[2] for t in belt])
+
+
+def apply_move(lv, st, i):
+    slots, belt = st
+    S = len(slots)
+    s = slots[i]
+    r = run_len(s)
+    run = s[:r]
+    new_slots = list(slots)
+    new_slots[i] = s[r:]
+    nxt = (i + 1) % S
+    nb = list(belt) + [(c, nxt) for c in run]
+    ns, b2, deps, _ = settle(lv, new_slots, nb)
+    return (ns, b2)
+
+
+def key(st):
+    return st
+
+
+def replay(lv, moves):
+    st = initial(lv)
+    for m in moves:
+        if m not in legal_moves(lv, st):
+            return False
+        st = apply_move(lv, st, m)
+    return is_win(lv, st)

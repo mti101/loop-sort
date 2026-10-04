@@ -18,9 +18,9 @@ String boosterName(Booster b) {
     case Booster.hint:
       return 'Hint';
     case Booster.loop:
-      return 'Loop +2';
+      return 'Belt +2';
     case Booster.slot:
-      return 'Extra Order';
+      return 'Spare';
   }
 }
 
@@ -57,9 +57,9 @@ String boosterDesc(Booster b) {
     case Booster.hint:
       return 'Shows a winning move';
     case Booster.loop:
-      return 'Adds 2 spaces to the loop';
+      return 'Adds 2 spaces to the conveyor';
     case Booster.slot:
-      return 'Opens one more order slot';
+      return 'Reserved';
   }
 }
 
@@ -325,7 +325,7 @@ class ShopDialog extends StatelessWidget {
                 },
               ),
             ),
-            for (final b in Booster.values)
+            for (final b in const [Booster.undo, Booster.hint, Booster.loop])
               _ShopRow(
                 leading: BoosterBubble(b, size: 38),
                 title: '${boosterName(b)}  x${store.countOf(b)}',
@@ -450,7 +450,7 @@ const dailyRewards = <DailyReward>[
   DailyReward('120', 120),
   DailyReward('Hint x2', 0, {Booster.hint: 2}),
   DailyReward('180', 180),
-  DailyReward('Mega', 250, {Booster.loop: 1, Booster.slot: 1}),
+  DailyReward('Mega', 250, {Booster.loop: 1, Booster.hint: 1}),
 ];
 
 class DailyDialog extends StatefulWidget {
@@ -780,13 +780,13 @@ class StuckDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctx = Ctx.I;
     return DialogFrame(
-      title: deadEnd ? 'DEAD END' : 'LOOP FULL',
+      title: deadEnd ? 'DEAD END' : 'CONVEYOR FULL',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Mascot(size: 100, mood: 1),
           Text(
-            deadEnd ? 'No way to win from here.' : 'No moves left. The loop is jammed!',
+            deadEnd ? 'No way to win from here.' : 'No moves left. The conveyor is jammed!',
             textAlign: TextAlign.center,
             style: gameText(20),
           ),
@@ -794,7 +794,7 @@ class StuckDialog extends StatelessWidget {
           GameButton(
             label: 'REVIVE',
             icon: Icons.play_circle_fill_rounded,
-            sub: '+3 loop space',
+            sub: '+3 conveyor space',
             color: AppColors.green,
             height: 62,
             fontSize: 24,

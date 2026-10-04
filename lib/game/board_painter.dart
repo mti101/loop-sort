@@ -1,308 +1,453 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'controller.dart';
-import 'engine.dart';
 import 'layout.dart';
 import 'painting.dart';
 
-double _easeOutBack(double t) {
-  const c1 = 1.70158;
-  const c3 = c1 + 1;
-  final x = t - 1;
-  return 1 + c3 * x * x * x + c1 * x * x;
+final Paint _p = Paint()..isAntiAlias = true;
+
+double _smooth(double a, double b, double x) {
+  final t = ((x - a) / (b - a)).clamp(0.0, 1.0);
+  return t * t * (3 - 2 * t);
 }
 
 class BoardPainter extends CustomPainter {
   BoardPainter(this.g) : super(repaint: g);
   final GameController g;
 
-  final Paint _fill = Paint()..isAntiAlias = true;
-  final Paint _stroke = Paint()
-    ..isAntiAlias = true
-    ..style = PaintingStyle.stroke;
-
-  @override
-  bool shouldRepaint(covariant BoardPainter oldDelegate) => oldDelegate.g != g;
-
   @override
   void paint(Canvas canvas, Size size) {
-    final L = g.layout;
-    if (L == null) return;
-    _drawOrders(canvas, L);
-    _drawQueue(canvas, L);
-    _drawLoop(canvas, L);
-    _drawStacks(canvas, L);
-    _drawFlights(canvas, L);
-    _drawParticles(canvas);
+    final geo = g.geo;
+    if (geo == null) return;
+    _belt(canvas, geo);
+    for (final s in geo.slots) {
+      _slot(canvas, geo, s);
+    }
+    _beltTiles(canvas, geo);
+    _particles(canvas);
+    for (final s in geo.slots) {
+      _hintFx(canvas, geo, s);
+    }
+    _popups(canvas);
   }
 
-  // ------------------------------------------------------------ orders
-  void _drawOrders(Canvas c, BoardLayout L) {
-    final n = g.dSlots.length;
-    for (var j = 0; j < n; j++) {
-      final s = g.dSlots[j];
-      final r = L.slotRect(j, n);
-      final rr = RRect.fromRectAndRadius(r, const Radius.circular(18));
-      if (s.empty) {
-        drawPlate(c, rr, AppColors.panelDark.withAlpha(120), edge: AppColors.panelEdge.withAlpha(70), edgeW: 2);
-        drawText(c, '✓', r.center, 26, color: AppColors.green.withAlpha(150));
-      } else {
-        final appear = _easeOutBack(s.appear.clamp(0.0, 1.0));
-        final scale = (0.55 + 0.45 * appear) * (1 + 0.06 * s.pulse);
-        c.save();
-        c.translate(r.center.dx, r.center.dy);
-        c.scale(scale);
-        c.translate(-r.center.dx, -r.center.dy);
-        _card(c, L, j, n, r, rr, s.color, s.need, s.total, s.pulse);
-        c.restore();
-      }
-      final gc = s.ghostColor;
-      if (gc != null && s.ghostT > 0) {
-        final t = s.ghostT;
-        final sc = 1 + 0.14 * (1 - t);
-        c.save();
-        c.translate(r.center.dx, r.center.dy);
-        c.scale(sc);
-        c.translate(-r.center.dx, -r.center.dy);
-        c.saveLayer(r.inflate(12), Paint()..color = Color.fromRGBO(255, 255, 255, t.clamp(0.0, 1.0)));
-        final col = AppColors.tile(gc);
-        drawPlate(c, rr, const Color(0xFF123242), edge: col, edgeW: 3, depth: 4);
-        c.drawRRect(rr, _fill..color = Colors.white.withAlpha(120));
-        c.save();
-        c.translate(r.center.dx, r.center.dy);
-        c.scale(r.height * 0.5);
-        c.drawPath(Symbols.check, _fill..color = AppColors.greenDark);
-        c.restore();
-        c.restore();
-        c.restore();
-      }
-    }
-  }
-
-  void _card(Canvas c, BoardLayout L, int j, int n, Rect r, RRect rr, int color, int need, int total, double pulse) {
-    final col = AppColors.tile(color);
-    drawPlate(c, rr, const Color(0xFF123242), edge: col, edgeW: 3, depth: 4);
-    c.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(r.left + 3, r.top + 3, r.width - 6, r.height * 0.58), const Radius.circular(15)),
-        _fill..color = col.withAlpha(34));
-    final ts = L.slotTileSize(n);
-    drawTile(c, L.slotTileCenter(j, n), ts, color, scale: 1 + 0.08 * pulse);
-    final numC = Offset(r.left + r.width * 0.72, r.top + r.height * 0.42);
-    drawText(c, '$need', numC, math.min(r.height * 0.42, 40), color: Colors.white, shadow: const Color(0x66000000));
-    final tot = math.max(1, total);
-    final pipS = math.min(14.0, (r.width - 24) / tot - 3);
-    final rowW = tot * (pipS + 3) - 3;
-    var px = r.center.dx - rowW / 2;
-    final py = r.bottom - 17;
-    final done = total - need;
-    for (var k = 0; k < tot; k++) {
-      final pr = RRect.fromRectAndRadius(Rect.fromLTWH(px, py - pipS / 2, pipS, pipS), Radius.circular(pipS * 0.3));
-      c.drawRRect(pr, _fill..color = k < done ? col : const Color(0xFF2B4A5C));
-      px += pipS + 3;
-    }
-  }
-
-  void _drawQueue(Canvas c, BoardLayout L) {
-    final r = L.queueRect;
-    drawText(c, 'NEXT', Offset(r.left + 22, r.center.dy), 13, color: AppColors.textDim);
-    var x = r.left + 52;
-    var q = g.dQi;
-    final total = g.lv.orders.length;
-    while (q < total && x + 58 < r.right - 62) {
-      final o = g.lv.orders[q];
-      drawTile(c, Offset(x + 10, r.center.dy - 1), 20, o.color);
-      drawText(c, '×${o.need}', Offset(x + 35, r.center.dy), 13, color: AppColors.textDim);
-      x += 58;
-      q++;
-    }
-    final left = total - g.dDone;
-    drawText(c, '$left left', Offset(r.right - 28, r.center.dy), 13, color: AppColors.amber);
-  }
-
-  // ------------------------------------------------------------ loop
-  void _drawLoop(Canvas c, BoardLayout L) {
-    final rr = RRect.fromRectAndRadius(L.trackRect, Radius.circular(L.trackR));
-    final belt = L.beltWidth;
-    final count = g.dLoop.length + g.pendingLoopFlights;
-    final danger = count >= g.dCap - 1 && g.dCap > 0;
-    final flash = g.loopFlash;
-
-    _stroke.strokeWidth = belt + 20;
-    c.drawRRect(rr.shift(const Offset(0, 4)), _stroke..color = const Color(0xFF071820));
-    _stroke.strokeWidth = belt + 18;
-    final railColor = Color.lerp(const Color(0xFF2F7090), AppColors.red, flash)!;
-    c.drawRRect(rr, _stroke..color = railColor);
-    _stroke.strokeWidth = belt + 10;
-    c.drawRRect(rr, _stroke..color = const Color(0xFF0E2A38));
-    _stroke.strokeWidth = belt;
-    c.drawRRect(rr, _stroke..color = const Color(0xFF173F52));
-
-    // tread marks (moving)
-    const marks = 64;
-    final off = (g.time * 0.18) % 1.0;
-    for (var i = 0; i < marks; i++) {
-      final s = (i + off) / marks;
-      final p = L.loopPoint(s);
-      final p2 = L.loopPoint(s + 0.002);
-      final d = p2 - p;
-      final len = d.distance;
-      if (len == 0) continue;
-      final nrm = Offset(-d.dy / len, d.dx / len) * (belt * 0.46);
-      _stroke.strokeWidth = 2;
-      c.drawLine(p - nrm, p + nrm, _stroke..color = const Color(0x1AFFFFFF));
+  // ------------------------------------------------------------------ belt
+  void _belt(Canvas canvas, BoardGeometry geo) {
+    final path = geo.belt.toPath();
+    final bw = geo.beltWidth;
+    void stroke(double w, Color c, {Offset off = Offset.zero, MaskFilter? blur}) {
+      _p
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = geo.belt.closed ? StrokeCap.butt : StrokeCap.round
+        ..color = c
+        ..maskFilter = blur;
+      canvas.save();
+      canvas.translate(off.dx, off.dy);
+      canvas.drawPath(path, _p);
+      canvas.restore();
+      _p
+        ..maskFilter = null
+        ..style = PaintingStyle.fill;
     }
 
-    // bays
-    final cap = math.max(1, g.dCap);
-    for (var k = 0; k < cap; k++) {
-      final p = L.loopPoint(g.phase + k / cap);
-      final empty = k >= g.dLoop.length;
-      final bayR = RRect.fromRectAndRadius(
-          Rect.fromCenter(center: p, width: L.loopTile * 0.94, height: L.loopTile * 0.94),
-          Radius.circular(L.loopTile * 0.22));
-      if (empty) {
-        c.drawRRect(bayR, _fill..color = const Color(0x22000000));
-        _stroke.strokeWidth = 1.6;
-        c.drawRRect(bayR, _stroke..color = Colors.white.withAlpha(k < cap ? 40 : 0));
+    stroke(bw * 1.9, const Color(0x55000018), off: Offset(0, bw * 0.16), blur: MaskFilter.blur(BlurStyle.normal, bw * 0.16));
+    stroke(bw * 1.74, const Color(0xFF1A2468));
+    stroke(bw * 1.6, const Color(0xFF6C84EA), off: Offset(0, -bw * 0.03));
+    stroke(bw * 1.52, const Color(0xFF4960CC), off: Offset(0, bw * 0.015));
+    stroke(bw * 1.26, const Color(0xFF2B3A98));
+    stroke(bw * 1.12, const Color(0xFF111749));
+    stroke(bw * 0.96, const Color(0xFF181F5E), off: Offset(0, bw * 0.05));
+    // chevrons showing the flow direction
+    final len = geo.belt.length;
+    final step = geo.tile * 2.4;
+    final n = (len / step).floor();
+    final chev = Paint()
+      ..color = const Color(0xFF3A4CB4)
+      ..strokeWidth = bw * 0.1
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    for (var i = 0; i < n; i++) {
+      final u = (i + 0.5) * len / n;
+      final p = geo.belt.pointAt(u);
+      final a = geo.belt.angleAt(u);
+      canvas.save();
+      canvas.translate(p.dx, p.dy);
+      canvas.rotate(a);
+      final k = bw * 0.2;
+      canvas.drawPath(
+          Path()
+            ..moveTo(-k * 0.5, -k)
+            ..lineTo(k * 0.5, 0)
+            ..lineTo(-k * 0.5, k),
+          chev);
+      canvas.restore();
+    }
+    if (!geo.belt.closed) {
+      // end caps of an open conveyor
+      for (final end in [0.0, len]) {
+        final p = geo.belt.pointAt(end == 0 ? 0.0 : len - 0.01);
+        final cap = RRect.fromRectAndRadius(
+            Rect.fromCenter(center: p, width: bw * 0.62, height: bw * 1.95), Radius.circular(bw * 0.2));
+        canvas.drawRRect(cap.shift(Offset(0, bw * 0.06)), _p..color = const Color(0xFF141C58));
+        canvas.drawRRect(
+            cap,
+            _p
+              ..shader = ui.Gradient.linear(cap.outerRect.topLeft, cap.outerRect.bottomRight,
+                  const [Color(0xFF8CA2F5), Color(0xFF4F67D8), Color(0xFF34479F)], const [0, 0.5, 1]));
+        _p.shader = null;
+        canvas.drawCircle(p, bw * 0.12, _p..color = const Color(0xFF1B2766));
       }
     }
-
-    // tiles on the loop
-    for (final lt in g.dLoop) {
-      final p = L.loopPoint(g.phase + lt.pos / cap);
-      final sc = 1.0 + 0.25 * math.sin(lt.pop * math.pi);
-      drawTile(c, p, L.loopTile * 0.94, lt.color, scale: sc);
-    }
-
-    // centre read-out
-    final ctr = L.trackCenter;
-    final grow = 1 + 0.2 * math.sin(g.capGrow * math.pi);
-    drawText(c, 'LOOP', ctr.translate(0, -L.trackR * 0.46), 13, color: AppColors.textDim);
-    final col = count >= g.dCap
-        ? AppColors.red
-        : (danger ? AppColors.amber : Colors.white);
-    drawText(c, '$count/${g.dCap}', ctr.translate(0, L.trackR * 0.1), 30 * grow,
-        color: col, shadow: const Color(0x66000000));
-    if (flash > 0) {
-      drawText(c, 'FULL', ctr.translate(0, L.trackR * 0.62), 14, color: AppColors.red.withAlpha((flash * 255).round()));
+    // rivets on the rail
+    final riv = Paint()..color = const Color(0xFF9FB2F8);
+    final rn = (len / (geo.tile * 3.2)).floor();
+    for (var i = 0; i < rn; i++) {
+      final u = (i + 0.25) * len / rn;
+      final p = geo.belt.pointAt(u);
+      final a = geo.belt.angleAt(u) + math.pi / 2;
+      final off = Offset(math.cos(a), math.sin(a)) * bw * 0.84;
+      canvas.drawCircle(p + off, bw * 0.045, riv);
+      canvas.drawCircle(p - off, bw * 0.045, riv);
     }
   }
 
-  // ------------------------------------------------------------ stacks
-  void _drawStacks(Canvas c, BoardLayout L) {
-    final lv = g.lv;
-    for (var i = 0; i < lv.stacks.length; i++) {
-      final shakeV = g.shake[i] ?? 0;
-      final dx = math.sin(g.time * 70) * 6 * shakeV;
-      final r = L.stackRect(i).shift(Offset(dx, 0));
-      final plate = RRect.fromRectAndRadius(r, const Radius.circular(14));
-      final locked = g.isStackLocked(i);
-      c.drawRRect(plate, _fill..color = const Color(0x55061821));
-      _stroke.strokeWidth = 2;
-      c.drawRRect(plate, _stroke..color = Colors.white.withAlpha(22));
+  // ----------------------------------------------------------------- slots
+  Rect _tubeRect(SlotGeo s) {
+    final a = s.base;
+    final b = s.entry;
+    final half = s.cross * 0.62;
+    if (s.dir.dx.abs() < 0.5) {
+      return Rect.fromLTRB(a.dx - half, math.min(a.dy, b.dy), a.dx + half, math.max(a.dy, b.dy));
+    }
+    return Rect.fromLTRB(math.min(a.dx, b.dx), a.dy - half, math.max(a.dx, b.dx), a.dy + half);
+  }
 
-      final st = g.dStacks[i];
-      final off = lv.stacks[i].length - st.length;
-      final run = frontRun(st);
-      final popV = g.pop[i] ?? 0;
+  void _slot(Canvas canvas, BoardGeometry geo, SlotGeo s) {
+    final d = g.slots[s.index];
+    var shift = Offset.zero;
+    if (d.shake > 0) {
+      shift = s.perp * (math.sin(d.shake * 22) * d.shake * geo.tile * 0.1);
+    }
+    canvas.save();
+    canvas.translate(shift.dx, shift.dy);
+    final rect = _tubeRect(s);
+    final rr = RRect.fromRectAndRadius(rect, Radius.circular(geo.tile * 0.2));
+    // gate connector from tube end to belt
+    final tubeEnd = s.entry;
+    canvas.drawLine(
+        tubeEnd,
+        s.gate,
+        Paint()
+          ..color = const Color(0xFF2A3A98).withValues(alpha: 0.9)
+          ..strokeWidth = s.cross * 0.52
+          ..strokeCap = StrokeCap.butt);
+    canvas.drawLine(
+        tubeEnd,
+        s.gate,
+        Paint()
+          ..color = const Color(0xFF141B56)
+          ..strokeWidth = s.cross * 0.36
+          ..strokeCap = StrokeCap.butt);
+    // shadow
+    canvas.drawRRect(rr.shift(Offset(0, geo.tile * 0.08)), _p..color = const Color(0x55000020));
+    // outer rim
+    canvas.drawRRect(rr.inflate(geo.tile * 0.06), _p..color = const Color(0xFF5069D8));
+    canvas.drawRRect(
+        rr,
+        _p
+          ..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter,
+              const [Color(0xFF1A2260), Color(0xFF252F7E), Color(0xFF2E3A92)]));
+    _p.shader = null;
+    // inner top shade
+    canvas.drawRRect(
+        rr.deflate(geo.tile * 0.03),
+        _p
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = geo.tile * 0.05
+          ..color = const Color(0xFF0D1440));
+    _p.style = PaintingStyle.fill;
+    // capacity ticks (subtle floor lines)
+    final tick = Paint()
+      ..color = const Color(0xFF3B4AAE).withValues(alpha: 0.5)
+      ..strokeWidth = 1.2;
+    for (var k = 1; k < s.capacity; k++) {
+      final c = s.base + s.dir * (s.pad + s.along * k);
+      final pp = s.perp * (s.cross * 0.4);
+      canvas.drawLine(c - pp, c + pp, tick);
+    }
+    // entry marker
+    final mp = s.entry + s.dir * (geo.tile * 0.22);
+    final ang = math.atan2(s.dir.dy, s.dir.dx);
+    canvas.save();
+    canvas.translate(mp.dx, mp.dy);
+    canvas.rotate(ang);
+    final m = geo.tile * 0.16;
+    canvas.drawPath(
+        Path()
+          ..moveTo(m, 0)
+          ..lineTo(-m * 0.7, -m)
+          ..lineTo(-m * 0.7, m)
+          ..close(),
+        _p..color = Colors.white.withValues(alpha: 0.9));
+    canvas.restore();
 
-      if (st.isNotEmpty && !locked) {
-        final top = L.stackTileCenter(i, 0).dy - L.tile / 2 - 4;
-        final bot = L.stackTileCenter(i, run - 1).dy + L.tile / 2 + 6;
-        final hl = RRect.fromRectAndRadius(
-            Rect.fromLTRB(r.left + 3, top, r.right - 3, bot), const Radius.circular(12));
-        c.drawRRect(hl, _fill..color = Colors.white.withAlpha(16));
-        _stroke.strokeWidth = 2;
-        c.drawRRect(hl, _stroke..color = Colors.white.withAlpha(70));
+    if (d.complete) {
+      _completeBar(canvas, geo, s, d);
+    } else {
+      final count = d.tiles.length;
+      final w = (s.dir.dx.abs() < 0.5 ? s.cross : s.along) * 0.96;
+      final h = (s.dir.dx.abs() < 0.5 ? s.along : s.cross) * 0.96;
+      for (var k = count - 1; k >= 0; k--) {
+        var c = s.tileCenter(k, count);
+        var sc = 1.0;
+        if (k == 0 && d.settle > 0) sc = 1 + 0.07 * math.sin(d.settle * math.pi);
+        if (d.pop > 0) sc *= 1 - 0.05 * math.sin(d.pop * math.pi);
+        drawBrick(canvas, c, w, h, d.tiles[k].color, hidden: g.isHidden(s.index, k), scale: sc);
       }
+    }
+    canvas.restore();
+  }
 
-      for (var k = st.length - 1; k >= 0; k--) {
-        final center = L.stackTileCenter(i, k).translate(dx, 0);
-        final mystery = lv.mystery[i][off + k] && k >= run;
-        final sc = (k < run && popV > 0) ? 1 + 0.12 * math.sin(popV * math.pi) : 1.0;
-        drawTile(c, center, L.tile, st[k], hidden: mystery, scale: sc, dim: locked ? 0.55 : 0);
-      }
+  void _completeBar(Canvas canvas, BoardGeometry geo, SlotGeo s, SlotDisp d) {
+    final color = d.tiles.isEmpty ? 0 : d.tiles.first.color;
+    final base = AppColors.tile(color);
+    final a = s.base + s.dir * s.pad;
+    final b = s.base + s.dir * (s.pad + s.along * s.capacity);
+    final vertical = s.dir.dx.abs() < 0.5;
+    final half = s.cross * 0.5;
+    final rect = vertical
+        ? Rect.fromLTRB(a.dx - half, math.min(a.dy, b.dy), a.dx + half, math.max(a.dy, b.dy))
+        : Rect.fromLTRB(math.min(a.dx, b.dx), a.dy - half, math.max(a.dx, b.dx), a.dy + half);
+    final r = Radius.circular(geo.tile * 0.2);
+    final body = RRect.fromRectAndRadius(rect.deflate(geo.tile * 0.02), r);
+    final lip = geo.tile * 0.1;
+    if (d.flash > 0) {
+      canvas.drawRRect(body.inflate(geo.tile * 0.2 * d.flash),
+          _p..color = Colors.white.withValues(alpha: 0.5 * d.flash)..maskFilter = MaskFilter.blur(BlurStyle.normal, geo.tile * 0.25));
+      _p.maskFilter = null;
+    }
+    canvas.drawRRect(body.shift(Offset(0, lip)), _p..color = AppColors.shade(base, -0.3));
+    final grad = vertical
+        ? ui.Gradient.linear(rect.centerLeft, rect.centerRight,
+            [AppColors.shade(base, 0.22), base, AppColors.shade(base, -0.14)], [0, 0.45, 1])
+        : ui.Gradient.linear(rect.topCenter, rect.bottomCenter,
+            [AppColors.shade(base, 0.22), base, AppColors.shade(base, -0.14)], [0, 0.45, 1]);
+    canvas.drawRRect(body, _p..shader = grad);
+    _p.shader = null;
+    canvas.drawRRect(
+        body.deflate(geo.tile * 0.04),
+        _p
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = geo.tile * 0.05
+          ..color = Colors.white.withValues(alpha: 0.28));
+    _p.style = PaintingStyle.fill;
+    // check mark
+    final c = rect.center;
+    final sz = geo.tile * 0.5;
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.scale(sz);
+    canvas.drawPath(Symbols.check.shift(const Offset(0, 0.06)), _p..color = AppColors.shade(base, -0.32).withValues(alpha: 0.7));
+    canvas.drawPath(Symbols.check, _p..color = Colors.white.withValues(alpha: 0.92));
+    canvas.restore();
+  }
 
-      if (locked) {
-        final need = lv.locks[i] - g.dDone;
-        final lc = Offset(r.center.dx + dx, L.stackTileCenter(i, 0).dy + L.tile * 0.3);
-        _drawLock(c, lc, L.tile * 0.9, need);
-      }
+  // ----------------------------------------------------------- belt tiles
+  static const _slats = 6;
 
-      if (g.hintStack == i && !locked) {
-        final pulse = 0.5 + 0.5 * math.sin(g.time * 8);
-        final fc = L.stackTileCenter(i, 0).translate(dx, 0);
-        _stroke.strokeWidth = 3 + 2 * pulse;
-        c.drawRRect(
-            RRect.fromRectAndRadius(Rect.fromCenter(center: fc, width: L.tile * 1.18, height: L.tile * 1.18),
-                Radius.circular(L.tile * 0.28)),
-            _stroke..color = AppColors.amber.withAlpha((150 + 105 * pulse).round()));
-        final by = fc.dy - L.tile * 0.95 - 6 * pulse;
-        final arrow = Path()
-          ..moveTo(fc.dx, by + 12)
-          ..lineTo(fc.dx - 11, by - 4)
-          ..lineTo(fc.dx + 11, by - 4)
-          ..close();
-        c.drawPath(arrow, _fill..color = AppColors.amber);
+  void _slatsAt(Canvas canvas, BoardGeometry geo, double u, int color, double alpha, {int count = _slats}) {
+    if (alpha <= 0.01) return;
+    final base = AppColors.tile(color);
+    final bw = geo.beltWidth;
+    final sp = geo.tile * 0.085;
+    final th = sp * 0.92;
+    final a = (alpha * 255).round();
+    for (var j = 0; j < count; j++) {
+      final uj = u - j * sp;
+      final p = geo.belt.pointAt(uj);
+      final ang = geo.belt.angleAt(uj);
+      canvas.save();
+      canvas.translate(p.dx, p.dy);
+      canvas.rotate(ang);
+      final rc = Rect.fromCenter(center: Offset.zero, width: th, height: bw * 1.02);
+      final rr = RRect.fromRectAndRadius(rc, Radius.circular(th * 0.4));
+      canvas.drawRRect(rr.shift(const Offset(0.6, 1.4)), _p..color = Colors.black.withAlpha((a * 0.3).round()));
+      canvas.drawRRect(rr, _p..color = (j.isEven ? base : AppColors.shade(base, -0.1)).withAlpha(a));
+      canvas.drawRect(Rect.fromLTWH(rc.left, rc.top + 1, th * 0.45, rc.height - 2),
+          _p..color = AppColors.shade(base, 0.22).withAlpha((a * 0.9).round()));
+      canvas.restore();
+    }
+  }
+
+  void _beltTiles(Canvas canvas, BoardGeometry geo) {
+    for (final b in g.belt) {
+      final color = b.tile.color;
+      switch (b.phase) {
+        case BPhase.lift:
+          if (b.delay > 0) {
+            // still sitting in its slot, drawn as part of the lift origin
+            _liftBrick(canvas, geo, b, 0);
+            break;
+          }
+          final t = Curves.easeOut.transform(b.t.clamp(0.0, 1.0));
+          _liftBrick(canvas, geo, b, t);
+          final gate = geo.slots[b.src].gateArc;
+          _slatsAt(canvas, geo, gate, color, _smooth(0.55, 1.0, b.t));
+          break;
+        case BPhase.ride:
+          _slatsAt(canvas, geo, b.u, color, 1);
+          break;
+        case BPhase.drop:
+          final t = b.t.clamp(0.0, 1.0);
+          final tg = geo.slots[b.target!];
+          _slatsAt(canvas, geo, tg.gateArc, color, 1 - _smooth(0.0, 0.45, t));
+          final e = Curves.easeIn.transform(t);
+          final pos = Offset.lerp(b.dropFrom, b.dropTo, e)!;
+          final vertical = tg.dir.dx.abs() < 0.5;
+          final w = (vertical ? tg.cross : tg.along) * 0.96;
+          final h = (vertical ? tg.along : tg.cross) * 0.96;
+          final grow = _smooth(0.0, 0.7, t);
+          drawBrick(canvas, pos, w, h, color, scale: 0.55 + 0.45 * grow, alpha: _smooth(0.05, 0.5, t));
+          break;
       }
     }
   }
 
-  void _drawLock(Canvas c, Offset ctr, double size, int need) {
-    final body = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: ctr.translate(0, size * 0.1), width: size * 0.8, height: size * 0.62),
-        Radius.circular(size * 0.14));
-    _stroke.strokeWidth = size * 0.13;
-    c.drawArc(Rect.fromCenter(center: ctr.translate(0, -size * 0.16), width: size * 0.46, height: size * 0.5),
-        math.pi, math.pi, false, _stroke..color = const Color(0xFFDDE8EE));
-    c.drawRRect(body, _fill..color = AppColors.amber);
-    drawText(c, '$need', body.center, size * 0.42, color: const Color(0xFF5A3A00));
+  void _liftBrick(Canvas canvas, BoardGeometry geo, BeltV b, double t) {
+    final sg = geo.slots[b.src];
+    final vertical = sg.dir.dx.abs() < 0.5;
+    final w = (vertical ? sg.cross : sg.along) * 0.96;
+    final h = (vertical ? sg.along : sg.cross) * 0.96;
+    final pos = Offset.lerp(b.from, sg.gate, t)!;
+    final alpha = 1 - _smooth(0.45, 0.95, t);
+    drawBrick(canvas, pos, w, h, b.tile.color, scale: 1 - 0.4 * t, alpha: alpha);
   }
 
-  // ------------------------------------------------------------ flights
-  void _drawFlights(Canvas c, BoardLayout L) {
-    for (final f in g.flights) {
-      if (f.t < 0) continue;
-      final p = (f.t / f.dur).clamp(0.0, 1.0);
-      final to = f.toLoop
-          ? g.bayPoint(f.toBay.toDouble())
-          : L.slotTileCenter(f.toSlot.clamp(0, math.max(0, g.dSlots.length - 1)), g.dSlots.length);
-      final e = Curves.easeInOutCubic.transform(p);
-      final arc = math.sin(math.pi * p) * 34;
-      final pos = Offset.lerp(f.from, to, e)!.translate(0, -arc);
-      final endSize = f.toLoop ? L.loopTile * 0.94 : L.slotTileSize(g.dSlots.length);
-      final size = L.tile + (endSize - L.tile) * e;
-      drawTile(c, pos, size, f.color, glow: true);
+  // -------------------------------------------------------------- effects
+  void _hintFx(Canvas canvas, BoardGeometry geo, SlotGeo s) {
+    final pulse = 0.5 + 0.5 * math.sin(g.time * 6);
+    if (g.hintSlot == s.index) {
+      final rr = RRect.fromRectAndRadius(_tubeRect(s).inflate(geo.tile * 0.1), Radius.circular(geo.tile * 0.26));
+      canvas.drawRRect(
+          rr,
+          _p
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = geo.tile * (0.07 + 0.05 * pulse)
+            ..color = const Color(0xFFFFE066).withValues(alpha: 0.6 + 0.4 * pulse));
+      _p.style = PaintingStyle.fill;
+    }
+    if (g.tutorialSlot == s.index && g.status == GameStatus.playing && !g.busy) {
+      _hand(canvas, geo, s);
     }
   }
 
-  void _drawParticles(Canvas c) {
+  void _hand(Canvas canvas, BoardGeometry geo, SlotGeo s) {
+    final t = g.time;
+    final press = 0.5 + 0.5 * math.sin(t * 5);
+    final c = s.center + Offset(s.cross * 0.45, s.along * 0.2 + geo.tile * 0.12 * press);
+    final u = geo.tile;
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.scale(u * 0.019);
+    // glove pointing up-left
+    final fill = Paint()..color = Colors.white;
+    final line = Paint()
+      ..color = const Color(0xFF1B2766)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeJoin = StrokeJoin.round;
+    final hand = Path()
+      ..moveTo(-8, -30)
+      ..cubicTo(-8, -38, 6, -38, 6, -30)
+      ..lineTo(6, -8)
+      ..cubicTo(14, -12, 22, -8, 22, -2)
+      ..cubicTo(30, -4, 36, 2, 34, 8)
+      ..lineTo(32, 26)
+      ..cubicTo(30, 38, 20, 46, 6, 46)
+      ..lineTo(-4, 46)
+      ..cubicTo(-14, 46, -20, 40, -26, 30)
+      ..lineTo(-34, 16)
+      ..cubicTo(-38, 8, -28, 2, -22, 10)
+      ..lineTo(-8, 22)
+      ..close();
+    canvas.drawPath(hand.shift(const Offset(2, 4)), Paint()..color = Colors.black.withValues(alpha: 0.25));
+    canvas.drawPath(hand, fill);
+    canvas.drawPath(hand, line);
+    canvas.restore();
+    // tap ripple
+    canvas.drawCircle(
+        s.center,
+        geo.tile * (0.3 + 0.35 * press),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..color = Colors.white.withValues(alpha: 0.55 * (1 - press)));
+  }
+
+  void _particles(Canvas canvas) {
     for (final p in g.particles) {
-      final a = (p.t * 255).round().clamp(0, 255);
-      _fill.color = p.color.withAlpha(a);
-      switch (p.kind) {
-        case 0:
-          c.save();
-          c.translate(p.p.dx, p.p.dy);
-          c.rotate(p.rot);
-          c.drawRect(Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.6), _fill);
-          c.restore();
-          break;
-        case 1:
-          c.drawCircle(p.p, p.size * 0.5, _fill);
-          break;
-        default:
-          c.save();
-          c.translate(p.p.dx, p.p.dy);
-          c.rotate(p.rot);
-          c.scale(p.size * 1.6);
-          c.drawPath(Symbols.paths[3], _fill);
-          c.restore();
+      final a = (p.life.clamp(0.0, 0.5) / 0.5);
+      _p.color = p.color.withValues(alpha: a);
+      if (p.kind == 1) {
+        canvas.drawCircle(p.p, p.size * 0.6, _p);
+      } else if (p.kind == 2) {
+        _star(canvas, p.p, p.size * 1.4, p.rot);
+      } else {
+        canvas.save();
+        canvas.translate(p.p.dx, p.p.dy);
+        canvas.rotate(p.rot);
+        canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.55), _p);
+        canvas.restore();
       }
     }
   }
+
+  void _star(Canvas canvas, Offset c, double r, double rot) {
+    final path = Path();
+    for (var i = 0; i < 8; i++) {
+      final rr = i.isEven ? r : r * 0.35;
+      final a = rot + i * math.pi / 4;
+      final x = c.dx + math.cos(a) * rr, y = c.dy + math.sin(a) * rr;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path..close(), _p);
+  }
+
+  void _popups(Canvas canvas) {
+    for (final pu in g.popups) {
+      final t = pu.t;
+      final rise = Curves.easeOut.transform(t.clamp(0.0, 1.0)) * 26;
+      final a = t < 0.7 ? 1.0 : 1 - (t - 0.7) / 0.3;
+      final sc = 0.7 + 0.3 * Curves.elasticOut.transform((t * 2.2).clamp(0.0, 1.0));
+      final c = pu.pos.translate(0, -rise);
+      canvas.save();
+      canvas.translate(c.dx, c.dy);
+      canvas.scale(sc);
+      final tp = textPainter(pu.text, 22, color: Colors.white);
+      final rr = RRect.fromRectAndRadius(
+          Rect.fromCenter(center: Offset.zero, width: tp.width + 22, height: tp.height + 10), const Radius.circular(14));
+      canvas.drawRRect(rr.inflate(3), _p..color = Colors.white.withValues(alpha: a));
+      canvas.drawRRect(rr, _p..color = const Color(0xFF58C93A).withValues(alpha: a));
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(Rect.fromLTWH(rr.left + 3, rr.top + 2, rr.width - 6, rr.height * 0.4), const Radius.circular(10)),
+          _p..color = Colors.white.withValues(alpha: 0.25 * a));
+      canvas.saveLayer(rr.outerRect.inflate(6), Paint()..color = Color.fromRGBO(255, 255, 255, a));
+      tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
+      canvas.restore();
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(BoardPainter old) => true;
 }

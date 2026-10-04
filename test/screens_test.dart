@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loopsort/app_context.dart';
+import 'package:loopsort/game/board_painter.dart';
 import 'package:loopsort/game/engine.dart';
+import 'package:loopsort/game/layout.dart';
 import 'package:loopsort/services/storage.dart';
 import 'package:loopsort/theme.dart';
 import 'package:loopsort/ui/dialogs.dart';
@@ -66,23 +68,23 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  for (final n in [1, 12, 40, 100, 180]) {
+  for (final n in [1, 2, 3, 4, 5, 12, 40, 100, 180]) {
     testWidgets('game level $n', (tester) async {
-      await setup(tester, prefs: {'maxLevel': 200, 'tips': ['tap', 'loop', 'plan', 'boosters', 'mystery', 'lock']});
+      await setup(tester, prefs: {
+        'maxLevel': 200,
+        'tips': n <= 5 ? <String>[] : ['tap', 'match', 'full', 'undo', 'plan', 'hintb', 'beltb', 'mystery']
+      });
       await tester.pumpWidget(app(GameScreen(level: n)));
-      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 700));
       await shot(tester, '10_game_L${n}_start');
-      // play a few moves of the stored solution and capture mid-flight
       final lv = Ctx.I.level(n);
-      final box = tester.getRect(find.byType(CustomPaint).first);
-      for (var k = 0; k < 4 && k < lv.solution.length; k++) {
-        // find stack column x via approximate layout (equal columns)
-        final cols = lv.stacks.length;
-        final colW = (box.width - 24) / cols;
-        final x = box.left + 12 + colW * (lv.solution[k] + 0.5);
-        final y = box.bottom - 80;
-        await tester.tapAt(Offset(x, y));
-        await tester.pump(const Duration(milliseconds: 140));
+      final boardFinder = find.byWidgetPredicate((w) => w is CustomPaint && w.painter is BoardPainter);
+      final box = tester.getRect(boardFinder);
+      final geo = BoardGeometry.build(lv, box.size);
+      for (var k = 0; k < 2 && k < lv.solution.length; k++) {
+        final c = geo.slots[lv.solution[k]].center;
+        await tester.tapAt(box.topLeft + c);
+        await tester.pump(const Duration(milliseconds: 650));
       }
       await shot(tester, '11_game_L${n}_moves');
       await tester.pump(const Duration(seconds: 3));

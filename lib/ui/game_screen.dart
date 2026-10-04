@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import '../app_context.dart';
 import '../config.dart';
 import '../game/board_painter.dart';
+import '../game/factory_bg.dart';
 import '../game/controller.dart';
 import '../game/engine.dart';
 import '../services/ads.dart';
@@ -76,25 +77,30 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     String? id, text;
     final n = widget.level;
     final firstMystery = ctx.levels.firstWhere((l) => l.hasMystery, orElse: () => lv).id;
-    final firstLock = ctx.levels.firstWhere((l) => l.hasLocks, orElse: () => lv).id;
     if (n == 1) {
       id = 'tap';
-      text = 'Tap a stack to send its front tiles to the loop. Fill the orders at the top!';
+      text = 'Tap a slot to move blocks.';
     } else if (n == 2) {
-      id = 'loop';
-      text = 'Matching tiles jump straight into an order. The rest ride the loop, which has limited room.';
+      id = 'match';
+      text = 'Match the colors and stack them nicely!';
+    } else if (n == 3) {
+      id = 'full';
+      text = "Don't let the conveyor fill up, or you'll lose!";
     } else if (n == 4) {
-      id = 'plan';
-      text = "Plan ahead! Don't clog the loop with colours you don't need yet.";
+      id = 'undo';
+      text = 'New! The Undo booster takes back your last move.';
     } else if (n == 5) {
-      id = 'boosters';
-      text = 'Stuck? Boosters help: Undo, Hint, more loop space, or an extra order slot.';
+      id = 'plan';
+      text = 'Fill each slot with one color to complete it.';
+    } else if (n == 7) {
+      id = 'hintb';
+      text = 'New! Hint shows you a good next move.';
+    } else if (n == 9) {
+      id = 'beltb';
+      text = 'New! Conveyor +2 adds more room on the belt.';
     } else if (n == firstMystery) {
       id = 'mystery';
-      text = '? tiles reveal their colour when they reach the front of a stack.';
-    } else if (n == firstLock) {
-      id = 'lock';
-      text = 'Locked stacks open after you complete enough orders.';
+      text = '? blocks reveal their color when they reach the top of a slot.';
     }
     if (id != null && !ctx.store.tipsSeen.contains(id)) {
       setState(() {
@@ -117,9 +123,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     final dt = (elapsed - _last).inMicroseconds / 1e6;
     _last = elapsed;
     g.update(dt);
-    if (!_tutorialStarted && g.layout != null) {
+    if (!_tutorialStarted && g.geo != null) {
       _tutorialStarted = true;
-      if (widget.level <= 2) g.autoHint();
+      if (widget.level <= 5) g.autoHint();
     }
   }
 
@@ -133,23 +139,40 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   // ------------------------------------------------------------ input
   void _onTap(Offset p) {
     if (_busyDialog) return;
-    final L = g.layout;
-    if (L == null) return;
-    final i = L.stackAt(p);
+    final geo = g.geo;
+    if (geo == null) return;
+    final i = geo.hitSlot(p);
     if (i == null) return;
     final before = g.moves;
-    g.tapStack(i);
+    g.tapSlot(i);
     if (g.moves != before) {
       if (_tipId != null) _dismissTip();
-      if (widget.level <= 2) g.autoHint();
+      if (widget.level <= 5) _scheduleAutoHint();
       setState(() {});
     }
   }
+
+  void _scheduleAutoHint() {
+    Future<void>.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted) g.autoHint();
+    });
+  }
+
+  static int _unlock(Booster b) => switch (b) {
+        Booster.undo => 4,
+        Booster.hint => 7,
+        Booster.loop => 9,
+        Booster.slot => 99,
+      };
 
   // ------------------------------------------------------------ boosters
   Future<void> _useBooster(Booster b) async {
     if (g.status != GameStatus.playing || _busyDialog) return;
     final store = ctx.store;
+    if (widget.level < _unlock(b)) {
+      g.showToast('Unlocks at level ${_unlock(b)}');
+      return;
+    }
     if (store.countOf(b) <= 0) {
       await _offerBooster(b);
       return;
@@ -160,6 +183,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           g.showToast('Nothing to undo yet');
           return;
         }
+        if (g.busy) return;
         store.useBooster(b);
         g.undo();
         break;
@@ -172,19 +196,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         break;
       case Booster.loop:
         store.useBooster(b);
-        g.addLoopCapacity(2);
-        g.showToast('+2 loop space!');
+        g.addBeltCapacity(2);
+        g.showToast('Conveyor +2!');
         break;
       case Booster.slot:
-        if (g.state.qi >= lv.orders.length) {
-          g.showToast('No more orders to add');
-          return;
-        }
-        if (g.addOrderSlot()) {
-          store.useBooster(b);
-          g.showToast('Extra order slot!');
-        }
-        break;
+        return;
     }
     if (mounted) setState(() {});
   }
@@ -255,7 +271,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
     final r = await showGameDialog<String>(
-        context, (_) => StuckDialog(deadEnd: g.deadEnd, canUndo: g.history.isNotEmpty),
+        context, (_) => StuckDialog(deadEnd: g.deadEnd, canUndo: g.canUndo),
         dismissible: false);
     _busyDialog = false;
     if (!mounted) return;
@@ -327,17 +343,23 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         if (!didPop) _pause();
       },
       child: Scaffold(
-        body: GameBackground(
+        backgroundColor: const Color(0xFF3748A6),
+        body: FactoryBackdrop(
+          seed: widget.level ~/ 10,
           child: SafeArea(
             child: Column(
               children: [
                 _topBar(),
                 Expanded(
                   child: LayoutBuilder(builder: (context, c) {
-                    g.setSize(Size(c.maxWidth, c.maxHeight));
+                    g.setSize(Size(c.maxWidth, c.maxHeight - (_tipText != null ? 70 : 0)));
                     return Stack(
                       children: [
-                        Positioned.fill(
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          height: c.maxHeight - (_tipText != null ? 70 : 0),
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTapDown: (d) => _onTap(d.localPosition),
@@ -347,9 +369,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                           ),
                         ),
                         Positioned(
-                          left: 16,
-                          right: 16,
-                          bottom: 10,
+                          left: 12,
+                          right: 12,
+                          bottom: 6,
                           child: IgnorePointer(
                             ignoring: _tipText == null,
                             child: ValueListenableBuilder<String?>(
@@ -381,23 +403,25 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   Widget _topBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 2),
       child: Row(
         children: [
-          RoundIconButton(icon: Icons.pause_rounded, onTap: _pause, size: 44),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                OutlinedText('LEVEL ${widget.level}', size: 28),
-                Text(
-                  lv.isBoss ? 'BOSS LEVEL' : 'Moves ${g.moves}',
-                  style: gameText(14, color: lv.isBoss ? AppColors.red : AppColors.textDim),
-                ),
-              ],
+          const _AvatarChip(),
+          const SizedBox(width: 6),
+          AnimatedBuilder(animation: g, builder: (context, _) => _BeltCounter(g: g)),
+          const Spacer(),
+          if (lv.isBoss)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE23B4A),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: Text('BOSS', style: gameText(14)),
             ),
-          ),
-          LivesBadge(store: ctx.store),
+          _LevelPlate(level: widget.level),
         ],
       ),
     );
@@ -405,14 +429,21 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   Widget _boosterBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 6),
       child: ListenableBuilder(
         listenable: ctx.store,
         builder: (context, _) => Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            for (final b in Booster.values)
-              _BoosterButton(booster: b, count: ctx.store.countOf(b), onTap: () => _useBooster(b)),
+            _GearButton(onTap: _pause),
+            for (final b in const [Booster.undo, Booster.hint, Booster.loop])
+              _BoosterPad(
+                booster: b,
+                count: ctx.store.countOf(b),
+                unlockLevel: _unlock(b),
+                level: widget.level,
+                onTap: () => _useBooster(b),
+              ),
           ],
         ),
       ),
@@ -420,85 +451,211 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   }
 }
 
-class _BoosterButton extends StatefulWidget {
-  const _BoosterButton({required this.booster, required this.count, required this.onTap});
-  final Booster booster;
-  final int count;
-  final VoidCallback onTap;
+class _AvatarChip extends StatelessWidget {
+  const _AvatarChip();
   @override
-  State<_BoosterButton> createState() => _BoosterButtonState();
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(colors: [Color(0xFF6B82E6), Color(0xFF3D52C0)], begin: Alignment.topCenter, end: Alignment.bottomCenter),
+        border: Border.all(color: const Color(0xFF1B2766), width: 3),
+      ),
+      child: ClipOval(child: Transform.translate(offset: const Offset(0, 3), child: const FittedBox(fit: BoxFit.cover, child: Mascot(size: 40)))),
+    );
+  }
 }
 
-class _BoosterButtonState extends State<_BoosterButton> {
+class _BeltCounter extends StatelessWidget {
+  const _BeltCounter({required this.g});
+  final GameController g;
+  @override
+  Widget build(BuildContext context) {
+    final n = g.beltCount;
+    final cap = g.beltCap;
+    final frac = cap == 0 ? 0.0 : (n / cap).clamp(0.0, 1.0);
+    final danger = frac >= 0.8;
+    final fill = danger ? const Color(0xFFE5424F) : const Color(0xFF45C85A);
+    final flash = g.capFlash;
+    return Container(
+      height: 32,
+      width: 96,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B2766),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: flash > 0 ? Colors.white : const Color(0xFF5F77DE), width: 2.4),
+        boxShadow: flash > 0 ? [BoxShadow(color: Colors.white.withValues(alpha: flash * 0.8), blurRadius: 10)] : null,
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(2),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: frac,
+              child: Container(
+                decoration: BoxDecoration(color: n == 0 ? Colors.transparent : fill, borderRadius: BorderRadius.circular(9)),
+              ),
+            ),
+          ),
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.view_stream_rounded, color: Colors.white, size: 15),
+                const SizedBox(width: 5),
+                Text('$n/$cap', style: gameText(17)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LevelPlate extends StatelessWidget {
+  const _LevelPlate({required this.level});
+  final int level;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 62,
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Color(0xFF3B4FB4), Color(0xFF2B3A94)], begin: Alignment.topCenter, end: Alignment.bottomCenter),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF1B2766), width: 2.4),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('LEVEL', style: gameText(9, color: const Color(0xFF9FB2F8), spacing: 1)),
+          Text('$level', style: gameText(20, height: 1)),
+        ],
+      ),
+    );
+  }
+}
+
+class _GearButton extends StatelessWidget {
+  const _GearButton({required this.onTap});
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        Ctx.I.sfx.play('button');
+        onTap();
+      },
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const RadialGradient(colors: [Color(0xFF6F86EE), Color(0xFF3B4FB4)], center: Alignment(-0.3, -0.4)),
+          border: Border.all(color: const Color(0xFF1B2766), width: 3),
+          boxShadow: const [BoxShadow(color: Color(0x55000030), offset: Offset(0, 3), blurRadius: 4)],
+        ),
+        child: const Icon(Icons.settings_rounded, color: Color(0xFFFFB347), size: 30),
+      ),
+    );
+  }
+}
+
+class _BoosterPad extends StatefulWidget {
+  const _BoosterPad({
+    required this.booster,
+    required this.count,
+    required this.unlockLevel,
+    required this.level,
+    required this.onTap,
+  });
+  final Booster booster;
+  final int count;
+  final int unlockLevel;
+  final int level;
+  final VoidCallback onTap;
+  @override
+  State<_BoosterPad> createState() => _BoosterPadState();
+}
+
+class _BoosterPadState extends State<_BoosterPad> {
   bool _down = false;
   @override
   Widget build(BuildContext context) {
     final b = widget.booster;
-    final c = boosterColor(b);
-    final dark = AppColors.shade(c, -0.22);
+    final locked = widget.level < widget.unlockLevel;
+    final c = locked ? const Color(0xFF5367CF) : boosterColor(b);
+    final dark = AppColors.shade(c, -0.25);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => setState(() => _down = true),
       onTapCancel: () => setState(() => _down = false),
       onTapUp: (_) => setState(() => _down = false),
       onTap: () {
-        ctx().sfx.play('button');
+        Ctx.I.sfx.play('button');
         widget.onTap();
       },
       child: SizedBox(
-        width: 76,
-        height: 78,
+        width: 78,
+        height: 74,
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.topCenter,
           children: [
             AnimatedPositioned(
               duration: const Duration(milliseconds: 60),
-              top: _down ? 4 : 0,
+              top: _down ? 3 : 0,
               child: Column(
                 children: [
                   Container(
-                    width: 58,
-                    height: 56,
+                    width: 56,
+                    height: 52,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      gradient: LinearGradient(
-                          begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [AppColors.shade(c, 0.1), c]),
-                      border: Border.all(color: dark, width: 3),
-                      boxShadow: [BoxShadow(color: dark, offset: Offset(0, _down ? 1 : 4))],
+                      borderRadius: BorderRadius.circular(26),
+                      gradient: RadialGradient(
+                          colors: [AppColors.shade(c, 0.18), c, dark], stops: const [0, 0.55, 1], center: const Alignment(-0.3, -0.5), radius: 1.1),
+                      border: Border.all(color: const Color(0xFF1B2766), width: 3),
+                      boxShadow: [BoxShadow(color: const Color(0xFF141C58), offset: Offset(0, _down ? 1 : 4))],
                     ),
-                    child: Icon(boosterIcon(b), color: Colors.white, size: 32),
+                    child: locked
+                        ? const Icon(Icons.lock_rounded, color: Color(0xFFC9D4FF), size: 28)
+                        : Icon(boosterIcon(b), color: Colors.white, size: 30),
                   ),
-                  const SizedBox(height: 4),
-                  Text(boosterName(b), style: gameText(12, color: AppColors.textDim)),
+                  const SizedBox(height: 3),
+                  Text(locked ? 'Lv ${widget.unlockLevel}' : boosterName(b),
+                      style: gameText(12, color: const Color(0xFFD6DEFF))),
                 ],
               ),
             ),
-            Positioned(
-              right: 4,
-              top: -6,
-              child: Container(
-                constraints: const BoxConstraints(minWidth: 24),
-                height: 24,
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: widget.count > 0 ? const Color(0xFF0B2230) : AppColors.green,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white, width: 2),
+            if (!locked)
+              Positioned(
+                right: 6,
+                top: -5,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 22),
+                  height: 22,
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: widget.count > 0 ? const Color(0xFFE5424F) : AppColors.green,
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  child: widget.count > 0
+                      ? Text('${widget.count}', style: gameText(13))
+                      : const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 15),
                 ),
-                child: widget.count > 0
-                    ? Text('${widget.count}', style: gameText(14))
-                    : const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
               ),
-            ),
           ],
         ),
       ),
     );
   }
-
-  Ctx ctx() => Ctx.I;
 }
 
 class _ToastPill extends StatelessWidget {
@@ -509,7 +666,7 @@ class _ToastPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xE60B2230),
+        color: const Color(0xEE1B2766),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppColors.amber, width: 2),
       ),
@@ -526,21 +683,38 @@ class _TipCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onOk,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
-        decoration: BoxDecoration(
-          color: const Color(0xF2123242),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: AppColors.amber, width: 3),
-          boxShadow: const [BoxShadow(color: Color(0x88000000), blurRadius: 14, offset: Offset(0, 6))],
-        ),
-        child: Row(
+      child: SizedBox(
+        height: 64,
+        child: Stack(
           children: [
-            const Mascot(size: 54, mood: 0),
-            const SizedBox(width: 10),
-            Expanded(child: Text(text, style: gameText(17, height: 1.15))),
-            const SizedBox(width: 8),
-            const Icon(Icons.check_circle_rounded, color: AppColors.green, size: 30),
+            Positioned.fill(
+              left: 38,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(36, 8, 12, 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF4DF),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF3C4FC0), width: 3.5),
+                  boxShadow: const [BoxShadow(color: Color(0x66000030), blurRadius: 8, offset: Offset(0, 4))],
+                ),
+                alignment: Alignment.centerLeft,
+                child: Text(text, style: const TextStyle(fontFamily: 'Lilita', fontSize: 16, height: 1.1, color: Color(0xFF3B2A1A))),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                width: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF3C4FC0),
+                  border: Border.all(color: Colors.white, width: 3),
+                ),
+                child: ClipOval(child: Transform.translate(offset: const Offset(0, 6), child: const FittedBox(fit: BoxFit.cover, child: Mascot(size: 64)))),
+              ),
+            ),
           ],
         ),
       ),

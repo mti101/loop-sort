@@ -1,340 +1,244 @@
-// Loop Sort puzzle engine. Mirrors tools/levelgen/engine.py exactly.
-// A unit test replays the stored solution of every level through this code.
+// Loop Sort puzzle engine v2. Mirrors tools/levelgen/engine.py exactly.
+//
+// Slots hold stacks of tiles (index 0 = top, the end next to the belt).
+// Tapping a slot lifts its top same-colour run onto a looping conveyor.
+// Slot i sits at belt position i; the belt flows i -> i+1 -> ... -> 0.
+// A belt tile drops into the first slot it passes whose top colour matches
+// (or that is empty) and that is not full. A full single-colour slot is
+// complete. Win: every tile is in a complete slot. Lose: no legal move.
 
 import 'dart:convert';
 
-class Order {
-  final int color;
-  final int need; // tiles still required
-  final int total; // tiles originally required (for progress display)
-  const Order(this.color, this.need, [int? total]) : total = total ?? need;
-}
-
 class LevelData {
-  final int id;
-  final int colors;
-  final int cap;
-  final int slots;
-  final List<List<int>> stacks; // front first
-  final List<List<bool>> mystery; // same shape as stacks
-  final List<int> locks;
-  final List<Order> orders;
-  final List<int> solution;
-  final String tag;
-  final double winRate;
-
-  const LevelData({
+  LevelData({
     required this.id,
+    required this.layout,
+    required this.shape,
+    required this.capacity,
+    required this.beltCap,
     required this.colors,
-    required this.cap,
     required this.slots,
-    required this.stacks,
     required this.mystery,
-    required this.locks,
-    required this.orders,
     required this.solution,
+    required this.par,
     required this.tag,
     required this.winRate,
   });
 
+  final int id;
+  final String layout; // bar | ring | rows | split | dual
+  final String shape; // round | oct | bump | pill | tear
+  final int capacity; // slot capacity (tiles)
+  final int beltCap; // belt capacity (tiles)
+  final int colors;
+  final List<List<int>> slots; // top first
+  final List<List<bool>> mystery;
+  final List<int> solution;
+  final int par;
+  final String tag;
+  final double winRate;
+
+  LevelData withBeltCap(int cap) => LevelData(
+        id: id, layout: layout, shape: shape, capacity: capacity, beltCap: cap, colors: colors,
+        slots: slots, mystery: mystery, solution: solution, par: par, tag: tag, winRate: winRate);
+
+  int get slotCount => slots.length;
+  bool get hasMystery => mystery.any((m) => m.any((b) => b));
+  bool get isBoss => tag == 'boss';
+  bool get isBreather => tag == 'breather';
+  int get tileCount => slots.fold(0, (a, s) => a + s.length);
+
   factory LevelData.fromJson(Map<String, dynamic> j) {
-    final st = (j['stacks'] as List).cast<Map<String, dynamic>>();
+    final slots = [for (final s in j['slots'] as List) [for (final c in s as List) c as int]];
+    final mys = [for (final s in j['mys'] as List) [for (final c in s as List) (c as int) != 0]];
     return LevelData(
-      id: j['id'] as int,
-      colors: j['colors'] as int,
-      cap: j['cap'] as int,
-      slots: j['slots'] as int,
-      stacks: [for (final s in st) (s['t'] as List).cast<int>().toList()],
-      mystery: [
-        for (final s in st) [for (final m in (s['m'] as List)) (m as int) == 1]
-      ],
-      locks: [for (final s in st) s['lock'] as int],
-      orders: [
-        for (final o in (j['orders'] as List))
-          Order((o as List)[0] as int, o[1] as int)
-      ],
-      solution: (j['sol'] as List).cast<int>().toList(),
-      tag: (j['tag'] ?? '') as String,
-      winRate: ((j['wr'] ?? 0) as num).toDouble(),
+      id: j['n'] as int,
+      layout: j['layout'] as String,
+      shape: j['shape'] as String,
+      capacity: j['C'] as int,
+      beltCap: j['cap'] as int,
+      colors: j['K'] as int,
+      slots: slots,
+      mystery: mys,
+      solution: [for (final m in j['sol'] as List) m as int],
+      par: (j['par'] as int?) ?? (j['sol'] as List).length,
+      tag: (j['tag'] as String?) ?? '',
+      winRate: (j['wr'] as num?)?.toDouble() ?? 1.0,
     );
   }
-
-  int get totalTiles => stacks.fold(0, (a, s) => a + s.length);
-  bool get hasMystery => mystery.any((m) => m.contains(true));
-  bool get hasLocks => locks.any((l) => l > 0);
-  bool get isBoss => tag == 'boss';
 }
 
-List<LevelData> parseLevels(String jsonText) {
-  final list = jsonDecode(jsonText) as List;
-  return [for (final e in list) LevelData.fromJson(e as Map<String, dynamic>)];
+List<LevelData> parseLevels(String json) {
+  final list = jsonDecode(json) as List;
+  return [for (final j in list) LevelData.fromJson(j as Map<String, dynamic>)];
+}
+
+class BeltTile {
+  const BeltTile(this.color, this.next);
+  final int color;
+  final int next; // gate (slot index) it reaches next
 }
 
 class GameState {
-  final List<List<int>> stacks;
-  final List<int> loop; // tile count per colour
-  final List<Order?> active;
-  final int qi; // next queue index
-  final int done; // completed orders
-  final int cap;
-
-  const GameState({
-    required this.stacks,
-    required this.loop,
-    required this.active,
-    required this.qi,
-    required this.done,
-    required this.cap,
-  });
-
-  int get loopCount {
-    var n = 0;
-    for (final c in loop) {
-      n += c;
-    }
-    return n;
-  }
-
-  int get tilesLeft {
-    var n = 0;
-    for (final s in stacks) {
-      n += s.length;
-    }
-    return n;
-  }
+  GameState(this.slots, this.belt);
+  final List<List<int>> slots;
+  final List<BeltTile> belt;
 
   String get key {
-    final b = StringBuffer();
-    for (final s in stacks) {
-      b.writeAll(s);
-      b.write('|');
+    final sb = StringBuffer();
+    for (final s in slots) {
+      sb.write(s.join(','));
+      sb.write('|');
     }
-    b.writeAll(loop, ',');
-    b.write('|');
-    for (final a in active) {
-      b.write(a == null ? 'x' : '${a.color}:${a.need}');
-      b.write(',');
+    sb.write('#');
+    for (final b in belt) {
+      sb.write('${b.color}.${b.next},');
     }
-    b.write('|$qi|$done|$cap');
-    return b.toString();
+    return sb.toString();
   }
 }
 
-enum EvType { send, absorb, complete }
-
-/// Playback events emitted by [applyMove] so the UI can animate a move.
-class Ev {
-  final EvType type;
-  final int stack; // send: source stack
-  final int color; // send/absorb
-  final int slot; // send: target slot or -1 (loop); absorb/complete: slot
-  final Order? next; // complete: replacement order (null = slot empties)
-  const Ev._(this.type, this.stack, this.color, this.slot, this.next);
-  const Ev.send(int stack, int color, int slot)
-      : this._(EvType.send, stack, color, slot, null);
-  const Ev.absorb(int color, int slot)
-      : this._(EvType.absorb, -1, color, slot, null);
-  const Ev.complete(int slot, Order? next)
-      : this._(EvType.complete, -1, -1, slot, next);
+/// One tile leaving the belt into a slot (index refers to the belt list
+/// that existed before settling: old tiles first, then the new run).
+class Drop {
+  const Drop(this.beltIndex, this.slot);
+  final int beltIndex;
+  final int slot;
 }
 
-GameState initialState(LevelData lv) {
-  final n = lv.slots < lv.orders.length ? lv.slots : lv.orders.length;
-  return GameState(
-    stacks: [for (final s in lv.stacks) List<int>.from(s)],
-    loop: List<int>.filled(lv.colors, 0),
-    active: [for (var i = 0; i < n; i++) lv.orders[i]],
-    qi: n,
-    done: 0,
-    cap: lv.cap,
-  );
+class MoveResult {
+  MoveResult(this.state, this.run, this.drops, this.stayIndices);
+  final GameState state;
+  final int run; // number of tiles lifted
+  final List<Drop> drops;
+  final List<int> stayIndices; // pre-settle belt indices still riding (in order)
 }
 
-bool isWin(LevelData lv, GameState st) => st.done == lv.orders.length;
+bool isComplete(List<int> s, int cap) {
+  if (s.length != cap) return false;
+  for (final c in s) {
+    if (c != s[0]) return false;
+  }
+  return true;
+}
 
-int frontRun(List<int> s) {
+int runLen(List<int> s) {
   if (s.isEmpty) return 0;
-  final c = s[0];
   var n = 1;
-  while (n < s.length && s[n] == c) {
+  while (n < s.length && s[n] == s[0]) {
     n++;
   }
   return n;
 }
 
-bool isLocked(LevelData lv, GameState st, int i) => st.done < lv.locks[i];
-
-/// Returns (qi, done) after absorbing loop tiles into active orders.
-(int, int) _settle(LevelData lv, List<int> loop, List<Order?> active, int qi,
-    int done, List<Ev>? ev) {
-  var changed = true;
-  while (changed) {
-    changed = false;
-    for (var j = 0; j < active.length; j++) {
-      final a = active[j];
-      if (a == null) continue;
-      final c = a.color;
-      var need = a.need;
-      if (loop[c] > 0) {
-        final take = loop[c] < need ? loop[c] : need;
-        loop[c] -= take;
-        need -= take;
-        active[j] = Order(c, need, a.total);
-        changed = true;
-        if (ev != null) {
-          for (var t = 0; t < take; t++) {
-            ev.add(Ev.absorb(c, j));
-          }
-        }
-        if (need == 0) {
-          done += 1;
-          Order? next;
-          if (qi < lv.orders.length) {
-            next = lv.orders[qi];
-            qi += 1;
-          }
-          active[j] = next;
-          ev?.add(Ev.complete(j, next));
-        }
-      }
-    }
-  }
-  return (qi, done);
+bool accepts(List<int> s, int c, int cap) {
+  if (s.length >= cap) return false;
+  return s.isEmpty || s[0] == c;
 }
 
-/// Applies a tap on stack [i]. Returns null if the move is illegal.
-/// When [ev] is given it receives the playback events (only valid when the
-/// result is non-null).
-GameState? applyMove(LevelData lv, GameState st, int i, [List<Ev>? ev]) {
-  final s = st.stacks[i];
-  if (s.isEmpty || st.done < lv.locks[i]) return null;
-  final c = s[0];
-  final n = frontRun(s);
-  final loop = List<int>.from(st.loop);
-  final active = List<Order?>.from(st.active);
-  var qi = st.qi;
-  var done = st.done;
-  for (var t = 0; t < n; t++) {
-    var delivered = false;
-    for (var j = 0; j < active.length; j++) {
-      final a = active[j];
-      if (a != null && a.color == c && a.need > 0) {
-        final need = a.need - 1;
-        active[j] = Order(c, need, a.total);
-        ev?.add(Ev.send(i, c, j));
-        delivered = true;
-        if (need == 0) {
-          done += 1;
-          Order? next;
-          if (qi < lv.orders.length) {
-            next = lv.orders[qi];
-            qi += 1;
-          }
-          active[j] = next;
-          ev?.add(Ev.complete(j, next));
-          final r = _settle(lv, loop, active, qi, done, ev);
-          qi = r.$1;
-          done = r.$2;
-        }
-        break;
-      }
-    }
-    if (!delivered) {
-      loop[c] += 1;
-      ev?.add(Ev.send(i, c, -1));
-    }
+GameState initialState(LevelData lv) =>
+    GameState([for (final s in lv.slots) List<int>.of(s)], const []);
+
+bool isWin(LevelData lv, GameState st) {
+  if (st.belt.isNotEmpty) return false;
+  for (final s in st.slots) {
+    if (s.isNotEmpty && !isComplete(s, lv.capacity)) return false;
   }
-  var total = 0;
-  for (final x in loop) {
-    total += x;
-  }
-  if (total > st.cap) return null;
-  final newStacks = <List<int>>[];
-  for (var k = 0; k < st.stacks.length; k++) {
-    newStacks.add(k == i ? s.sublist(n) : st.stacks[k]);
-  }
-  return GameState(
-      stacks: newStacks, loop: loop, active: active, qi: qi, done: done, cap: st.cap);
+  return true;
 }
 
 List<int> legalMoves(LevelData lv, GameState st) {
+  final free = lv.beltCap - st.belt.length;
   final out = <int>[];
-  for (var i = 0; i < st.stacks.length; i++) {
-    if (applyMove(lv, st, i) != null) out.add(i);
+  for (var i = 0; i < st.slots.length; i++) {
+    final s = st.slots[i];
+    if (s.isEmpty || isComplete(s, lv.capacity)) continue;
+    if (runLen(s) <= free) out.add(i);
   }
   return out;
 }
 
-/// Booster: extra order slot. Pulls the next queued order (if any) and lets
-/// the loop absorb into it. Returns null when there is nothing left to add.
-GameState? addSlot(LevelData lv, GameState st, [List<Ev>? ev]) {
-  if (st.qi >= lv.orders.length) return null;
-  final loop = List<int>.from(st.loop);
-  final active = List<Order?>.from(st.active);
-  active.add(lv.orders[st.qi]);
-  final r = _settle(lv, loop, active, st.qi + 1, st.done, ev);
-  return GameState(
-      stacks: st.stacks, loop: loop, active: active, qi: r.$1, done: r.$2, cap: st.cap);
+bool canTap(LevelData lv, GameState st, int i) => legalMoves(lv, st).contains(i);
+
+/// Applies tapping slot [i]. Returns drops for animation.
+MoveResult applyMove(LevelData lv, GameState st, int i) {
+  final n = st.slots.length;
+  final slots = [for (final s in st.slots) List<int>.of(s)];
+  final r = runLen(slots[i]);
+  final run = slots[i].sublist(0, r);
+  slots[i] = slots[i].sublist(r);
+  final nxt = (i + 1) % n;
+  // belt entries: [color, next, originalIndex]
+  var belt = <List<int>>[
+    for (var k = 0; k < st.belt.length; k++) [st.belt[k].color, st.belt[k].next, k],
+    for (var k = 0; k < r; k++) [run[k], nxt, st.belt.length + k],
+  ];
+  final drops = <Drop>[];
+  var idle = 0;
+  while (belt.isNotEmpty && idle < n) {
+    var dropped = false;
+    final nb = <List<int>>[];
+    for (final t in belt) {
+      final g = t[1];
+      if (accepts(slots[g], t[0], lv.capacity)) {
+        slots[g].insert(0, t[0]);
+        drops.add(Drop(t[2], g));
+        dropped = true;
+      } else {
+        t[1] = (g + 1) % n;
+        nb.add(t);
+      }
+    }
+    belt = nb;
+    idle = dropped ? 0 : idle + 1;
+  }
+  return MoveResult(
+    GameState(slots, [for (final t in belt) BeltTile(t[0], t[1])]),
+    r,
+    drops,
+    [for (final t in belt) t[2]],
+  );
 }
 
-GameState addCapacity(GameState st, int extra) => GameState(
-    stacks: st.stacks,
-    loop: st.loop,
-    active: st.active,
-    qi: st.qi,
-    done: st.done,
-    cap: st.cap + extra);
-
-// ---------------------------------------------------------------- solver
-
 class SolveResult {
-  final List<int>? moves;
-  final bool budgetExceeded;
-  const SolveResult(this.moves, this.budgetExceeded);
+  const SolveResult(this.moves, this.exhausted);
+  final List<int>? moves; // a winning line, or null
+  final bool exhausted; // true when null means "provably unsolvable"
+}
+
+/// Depth-first solver used for hints and dead-end detection.
+SolveResult solveFrom(LevelData lv, GameState st, {int budget = 60000}) {
+  final seen = <String>{};
+  var nodes = 0;
+  List<int>? dfs(GameState s) {
+    if (isWin(lv, s)) return <int>[];
+    final k = s.key;
+    if (!seen.add(k)) return null;
+    if (++nodes > budget) throw _Budget();
+    final cand = <(int, int, GameState)>[];
+    for (final m in legalMoves(lv, s)) {
+      final ns = applyMove(lv, s, m).state;
+      if (seen.contains(ns.key)) continue;
+      var h = ns.belt.length;
+      for (final sl in ns.slots) {
+        if (sl.isNotEmpty && !isComplete(sl, lv.capacity)) h++;
+      }
+      cand.add((h, m, ns));
+    }
+    cand.sort((a, b) => a.$1.compareTo(b.$1));
+    for (final c in cand) {
+      final r = dfs(c.$3);
+      if (r != null) return [c.$2, ...r];
+    }
+    return null;
+  }
+
+  try {
+    final r = dfs(st);
+    return SolveResult(r, r == null);
+  } on _Budget {
+    return const SolveResult(null, false);
+  }
 }
 
 class _Budget implements Exception {}
-
-class _Solver {
-  final LevelData lv;
-  final int budget;
-  final Set<String> dead = {};
-  int nodes = 0;
-  _Solver(this.lv, this.budget);
-
-  List<int>? solve(GameState st) {
-    if (isWin(lv, st)) return const [];
-    final k = st.key;
-    if (dead.contains(k)) return null;
-    nodes++;
-    if (nodes > budget) throw _Budget();
-    final moves = <(int, GameState)>[];
-    for (var i = 0; i < st.stacks.length; i++) {
-      final ns = applyMove(lv, st, i);
-      if (ns != null) moves.add((i, ns));
-    }
-    final base = st.tilesLeft;
-    moves.sort((a, b) {
-      final da = a.$2.tilesLeft - base;
-      final db = b.$2.tilesLeft - base;
-      if (da != db) return da.compareTo(db);
-      return a.$2.loopCount.compareTo(b.$2.loopCount);
-    });
-    for (final m in moves) {
-      final r = solve(m.$2);
-      if (r != null) return [m.$1, ...r];
-    }
-    dead.add(k);
-    return null;
-  }
-}
-
-/// Finds a winning line from [st] (used for hints). Pure; safe in an isolate.
-SolveResult solveFrom(LevelData lv, GameState st, {int budget = 150000}) {
-  final s = _Solver(lv, budget);
-  try {
-    return SolveResult(s.solve(st), false);
-  } on _Budget {
-    return const SolveResult(null, true);
-  }
-}

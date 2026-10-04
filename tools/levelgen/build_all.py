@@ -8,21 +8,37 @@ OUT = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "levels", "l
 
 
 def work(n):
-    r = build(n, max_tries=500)
+    h = handcrafted(n)
+    if h:
+        K = len({c for s in h['slots'] for c in s})
+        lv = Level(h['cap'], h['C'], tuple(tuple(s) for s in h['slots']), K)
+        sol = bfs_shortest(lv)
+        p = dict(boss=False, br=False)
+        d = to_json(n, lv, sol, 1.0, p, h['layout'], h['shape'], [[0] * len(s) for s in h['slots']])
+        d['par'] = len(sol)
+        return n, d
+    r = build(n)
     if r is None:
         return n, None
     lv, sol, wr, p = r
     assert replay(lv, sol), f"replay failed level {n}"
-    tr = trap_ratio(lv, sol)
-    d = to_json(n, lv, sol, wr, p, random.Random(n * 31 + 7))
-    d["trap"] = None if tr is None else round(tr, 3)
+    rng = random.Random(n * 31 + 7)
+    layout, shape = pick_layout(n, len(lv.slots), rng)
+    mys = mystery_flags(lv, p['mys'], rng)
+    par = bfs_shortest(lv, node_budget=120000)
+    d = to_json(n, lv, sol, wr, p, layout, shape, mys)
+    d['par'] = len(par) if par else max(2, int(len(sol) * 0.75))
     return n, d
 
 
 if __name__ == "__main__":
     t = time.time()
-    with Pool() as pool:
-        res = dict(pool.map(work, range(1, N + 1), chunksize=2))
+    with Pool(2) as pool:
+        res = {}
+        for n, d in pool.imap_unordered(work, range(1, N + 1)):
+            res[n] = d
+            if len(res) % 10 == 0:
+                print('progress', len(res), round(time.time() - t), flush=True)
     bad = [n for n, d in res.items() if d is None]
     if bad:
         print("FAILED levels:", bad)
@@ -35,5 +51,4 @@ if __name__ == "__main__":
     for lo in range(0, N, 20):
         chunk = levels[lo:lo + 20]
         wrs = [l["wr"] for l in chunk]
-        trs = [l["trap"] for l in chunk if l["trap"] is not None]
-        print(f"L{lo+1:3}-{lo+20:3} wr avg {sum(wrs)/len(wrs):.3f} min {min(wrs):.3f} max {max(wrs):.3f} trap avg {sum(trs)/max(1,len(trs)):.3f} sol avg {sum(len(l['sol']) for l in chunk)/len(chunk):.1f}")
+        print(f"L{lo+1:3}-{lo+20:3} wr avg {sum(wrs)/len(wrs):.2f} par avg {sum(l['par'] for l in chunk)/len(chunk):.1f} K {min(l['K'] for l in chunk)}-{max(l['K'] for l in chunk)} cap {min(l['cap'] for l in chunk)}-{max(l['cap'] for l in chunk)}")

@@ -16,17 +16,17 @@ class AppColors {
   static const blueDark = Color(0xFF2B6FC4);
   static const text = Colors.white;
   static const textDim = Color(0xFFA9C7D6);
-  static const hidden = Color(0xFF2A3B57);
+  static const hidden = Color(0xFF2B3768);
 
   /// Tile colours (index == colour id used by the engine).
   static const tiles = <Color>[
-    Color(0xFFFF5470), // 0 coral red
-    Color(0xFF3E9BFF), // 1 sky blue
-    Color(0xFF3ED67F), // 2 mint green
-    Color(0xFFFFD23F), // 3 sun yellow
-    Color(0xFFA66CFF), // 4 violet
-    Color(0xFFFF8C42), // 5 orange
-    Color(0xFFFF7CC8), // 6 pink
+    Color(0xFFE8333F), // 0 red
+    Color(0xFF2F80FF), // 1 blue
+    Color(0xFF3FD04A), // 2 green
+    Color(0xFFFFD21F), // 3 yellow
+    Color(0xFFB65CFF), // 4 violet
+    Color(0xFFFF8B1F), // 5 orange
+    Color(0xFFFF5CB1), // 6 pink
   ];
 
   static Color tile(int c) => tiles[c % tiles.length];
