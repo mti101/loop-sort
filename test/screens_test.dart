@@ -52,6 +52,12 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
+  Future<void> run(WidgetTester tester, int ms) async {
+    for (var t = 0; t < ms; t += 16) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+  }
+
   testWidgets('home screen', (tester) async {
     await setup(tester, prefs: {'dailyLastDay': Store.dayIndex(DateTime.now())});
     await tester.pumpWidget(app(const HomeScreen()));
@@ -85,14 +91,12 @@ void main() {
         final c = geo.slots[lv.solution[k]].center;
         await tester.tapAt(box.topLeft + c);
         if (k == 0 && (n == 2 || n == 3 || n == 4 || n == 12)) {
-          await tester.pump(const Duration(milliseconds: 160));
-          await shot(tester, '12_game_L${n}_a');
-          await tester.pump(const Duration(milliseconds: 240));
-          await shot(tester, '12_game_L${n}_b');
-          await tester.pump(const Duration(milliseconds: 300));
-          await shot(tester, '12_game_L${n}_c');
+          for (final f in ['a', 'b', 'c', 'd', 'e', 'f']) {
+            await run(tester, 200);
+            await shot(tester, '12_game_L${n}_$f');
+          }
         }
-        await tester.pump(const Duration(milliseconds: 650));
+        await run(tester, 2500);
       }
       await shot(tester, '11_game_L${n}_moves');
       await tester.pump(const Duration(seconds: 3));
