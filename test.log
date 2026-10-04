@@ -1,0 +1,28 @@
+
+::group::✅ Passing tests
+✅ /home/runner/work/loop-sort/loop-sort/test/smoke_test.dart: smoke
+✅ /home/runner/work/loop-sort/loop-sort/test/playback_test.dart: geometry: gates are ordered along the belt for every level
+✅ /home/runner/work/loop-sort/loop-sort/test/engine_test.dart: has 200 levels
+✅ /home/runner/work/loop-sort/loop-sort/test/engine_test.dart: every stored solution wins when replayed (Python/Dart parity)
+✅ /home/runner/work/loop-sort/loop-sort/test/engine_test.dart: tile counts are consistent
+✅ /home/runner/work/loop-sort/loop-sort/test/engine_test.dart: applyMove drop list is consistent with the resulting state
+✅ /home/runner/work/loop-sort/loop-sort/test/engine_test.dart: overfull belt move is rejected
+✅ /home/runner/work/loop-sort/loop-sort/test/engine_test.dart: solver finds a line from the start of early levels
+✅ /home/runner/work/loop-sort/loop-sort/test/playback_test.dart: headless playback of every level ends in a won, consistent view
+✅ /home/runner/work/loop-sort/loop-sort/test/playback_test.dart: undo restores state and view
+✅ /home/runner/work/loop-sort/loop-sort/test/playback_test.dart: belt capacity booster raises the limit
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: home screen
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: level select
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 1
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 2
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 3
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 4
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 5
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 12
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 40
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 100
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: game level 180
+✅ /home/runner/work/loop-sort/loop-sort/test/screens_test.dart: dialogs
+::endgroup::
+
+🎉 23 tests passed.

@@ -1,0 +1,6 @@
+Analyzing loop-sort...                                          
+
+warning • The declaration '_BgPainter' isn't referenced. Try removing the declaration of '_BgPainter' • lib/ui/widgets/kit.dart:423:7 • unused_element
+warning • The declaration '_LogoTilesPainter' isn't referenced. Try removing the declaration of '_LogoTilesPainter' • lib/ui/widgets/kit.dart:671:7 • unused_element
+
+2 issues found. (ran in 8.1s)
