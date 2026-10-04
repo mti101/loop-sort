@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app_context.dart';
+import '../../game/factory_bg.dart';
 import '../../game/painting.dart';
 import '../../theme.dart';
 
@@ -416,20 +417,7 @@ class GameBackground extends StatelessWidget {
   const GameBackground({super.key, this.child});
   final Widget? child;
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [AppColors.bgTop, AppColors.bgBottom]),
-      ),
-      child: Stack(
-        children: [
-          const Positioned.fill(child: RepaintBoundary(child: CustomPaint(painter: _BgPainter()))),
-          if (child != null) Positioned.fill(child: child!),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => FactoryBackdrop(child: child);
 }
 
 class _BgPainter extends CustomPainter {
